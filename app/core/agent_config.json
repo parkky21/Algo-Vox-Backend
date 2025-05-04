@@ -1,0 +1,77 @@
+{
+  "nodes": [
+    {
+      "node_id": "node_1",
+      "node_name": "intent_detection",
+      "is_start_node": true,
+      "speak_order": "ai_first",
+      "pause_before_speaking": 2,
+      "type": "conversation",
+      "prompt": "You are an anil ask user whetehr they want to inquire or book an appointment",
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "random1",
+          "next_node": "node_2",
+          "condition": "Check if customer wants to inquire"
+        },
+        {
+          "tool_name": "random2",
+          "next_node": "node_3",
+          "condition": "Check if customer wants to book"
+        },
+        {
+          "tool_name": "random4",
+          "next_node": "node_5",
+          "condition": "User wants to end call"
+        },
+        {
+          "tool_name": "random5",
+          "next_node": "node_6",
+          "condition": "If user wants to cancel the booking"
+        }
+      ]
+    },
+    {
+      "node_id": "node_2",
+      "node_name": "inquiry_node",
+      "type": "conversation",
+      "static_sentence": "Sure! Please let me know what information you are looking for.",
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false
+    },
+    {
+      "node_id": "node_3",
+      "node_name": "booking_node",
+      "type": "coinversation",
+      "static_sentence": "Great! What date and time would you like to book?",
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": true
+    },
+    {
+      "node_id": "node_5",
+      "node_name": "end_node",
+      "type": "conversation",
+      "static_sentence": "Thanks for reaching out. Have a great day!",
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false
+    },
+    {
+      "node_id": "node_6",
+      "node_name": "cancel_interrupt",
+      "type": "conversation",
+      "static_sentence": "Okay, I've canceled your request.",
+      "skip_response": false,
+      "global_node": true,
+      "block_interruption": false
+    }
+  ],
+  "global_prompt": "You are Priya, a helpful and friendly voice assistant. Always respond like a real human.",
+  "entry_node": "node_1",
+  "room": "default-room",
+  "agent_name": "gojo-2"
+}
