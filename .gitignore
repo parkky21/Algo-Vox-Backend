@@ -1,8 +1,6 @@
-__pycache__
-venv
-*/__pycache__
+__pycache__/
+venv/
+*/__pycache__/
 .env
-\.env
-app21/*
-app-debuger
+app-debuger/
 Gcred.json
