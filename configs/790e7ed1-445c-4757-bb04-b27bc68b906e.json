@@ -1,0 +1,268 @@
+{
+  "agent_id": null,
+  "name": null,
+  "instructions": null,
+  "vector_store_ids": null,
+  "STT": null,
+  "TTS": null,
+  "LLM": null,
+  "project_id": "voice_assistant_demo",
+  "flow_id": "simple_booking_flow_final",
+  "session_id": "session_001",
+  "entry_node": "node_1",
+  "global_settings": {
+    "language": "en-IN",
+    "voice": "en-IN-Chirp3-HD-Charon",
+    "global_prompt": "",
+    "llm": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "api_key": "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"
+    },
+    "stt": {
+      "provider": "deepgram",
+      "model": "nova-3",
+      "language": "en",
+      "api_key": "2d7ef5aed2ed88ddec30d9a7f75f2f6b46e21614"
+    },
+    "tts": {
+      "provider": "google",
+      "model": "en-IN-Chirp3-HD-Charon",
+      "language": "en-IN"
+    },
+    "temperature": 0.7,
+    "knowledge_base_id": "kb_healthcare_faq_001",
+    "speech_settings": {
+      "background_sound": "none",
+      "responsiveness": 1.0,
+      "interruption_sensitivity": 0.8,
+      "enable_backchanneling": true,
+      "transcription_mode": "optimize_for_speed",
+      "boosted_keywords": [
+        "Retell",
+        "Walmart"
+      ],
+      "enable_speech_normalization": true,
+      "enable_transcript_formatting": true,
+      "reminder_frequency": {
+        "interval_seconds": 10,
+        "repeat_times": 1
+      },
+      "pronunciation_guidance": {
+        "enabled": true,
+        "dictionary": {
+          "Retell": "Ree-tell",
+          "GPT": "Gee-Pee-Tee"
+        }
+      }
+    },
+    "call_settings": {
+      "voicemail_detection": {
+        "enabled": true,
+        "action_on_detection": "leave_voicemail",
+        "message": "Hi {{user_name}}, we tried reaching you regarding your request. Please call us back at {{support_number}}.",
+        "detection_duration_seconds": 30
+      },
+      "end_call_on_silence": {
+        "enabled": true,
+        "timeout_minutes": 10.0
+      },
+      "max_call_duration_minutes": 60.0,
+      "pause_before_speaking": 0,
+      "ring_duration_seconds": 30
+    }
+  },
+  "nodes": [
+    {
+      "node_id": "node_1",
+      "node_name": "Greeting",
+      "type": "conversation",
+      "is_start_node": true,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "Great the user Hello! This is Rahul from Vedabay. Are you experiencing joint pain, stiffness, or discomfort?",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "goto_needs_assessment",
+          "next_node": "node_2",
+          "condition": "User confirms having joint pain or discomfort"
+        },
+        {
+          "tool_name": "soft_exit",
+          "next_node": "node_exit",
+          "condition": "User says they are fine or have no issues"
+        }
+      ]
+    },
+    {
+      "node_id": "node_2",
+      "node_name": "Needs Assessment",
+      "type": "conversation",
+      "is_start_node": false,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "Can you describe your joint pain \u2014 is it occasional or persistent? How severe is it on a scale of 1 to 10?",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "mild_case_path",
+          "next_node": "node_offer_preventive",
+          "condition": "If severity is mild (1-4)"
+        },
+        {
+          "tool_name": "moderate_case_path",
+          "next_node": "node_offer_moderate",
+          "condition": "If severity is moderate (5-7)"
+        },
+        {
+          "tool_name": "severe_case_path",
+          "next_node": "node_offer_severe",
+          "condition": "If severity is high (8-10)"
+        }
+      ]
+    },
+    {
+      "node_id": "node_offer_preventive",
+      "node_name": "Preventive Offer",
+      "type": "conversation",
+      "is_start_node": false,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "For mild pain, prevention is key. Would you like to explore a natural Ayurvedic remedy that strengthens joints?",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "interested",
+          "next_node": "node_order",
+          "condition": "User shows interest"
+        },
+        {
+          "tool_name": "not_interested",
+          "next_node": "node_objection_handler",
+          "condition": "User is hesitant or refuses"
+        }
+      ]
+    },
+    {
+      "node_id": "node_offer_moderate",
+      "node_name": "Moderate Pain Offer",
+      "type": "conversation",
+      "is_start_node": false,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "Moderate pain can affect your daily routine. Would you be interested in an Ayurvedic oil that reduces stiffness and improves mobility?",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "interested_moderate",
+          "next_node": "node_order",
+          "condition": "User shows interest"
+        },
+        {
+          "tool_name": "not_interested_moderate",
+          "next_node": "node_objection_handler",
+          "condition": "User is hesitant or refuses"
+        }
+      ]
+    },
+    {
+      "node_id": "node_offer_severe",
+      "node_name": "Severe Pain Offer",
+      "type": "conversation",
+      "is_start_node": false,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "That sounds painful! OrthoHeal is clinically tested and used for severe joint pain. Would you like to know more?",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "interested_severe",
+          "next_node": "node_order",
+          "condition": "User shows interest"
+        },
+        {
+          "tool_name": "not_interested_severe",
+          "next_node": "node_objection_handler",
+          "condition": "User is hesitant or refuses"
+        }
+      ]
+    },
+    {
+      "node_id": "node_objection_handler",
+      "node_name": "Objection Handler",
+      "type": "conversation",
+      "is_start_node": false,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "Is it the cost, trust in the product, or something else that\u2019s stopping you? I\u2019d love to help you make an informed choice.",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "reconsider",
+          "next_node": "node_order",
+          "condition": "User reconsiders and shows interest"
+        },
+        {
+          "tool_name": "final_exit",
+          "next_node": "node_exit",
+          "condition": "User still refuses or says not now"
+        }
+      ]
+    },
+    {
+      "node_id": "node_order",
+      "node_name": "Order Placement",
+      "type": "conversation",
+      "is_start_node": false,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "Great! Let\u2019s proceed with your order. Please share your name, delivery address, and preferred payment method.",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": [
+        {
+          "tool_name": "order_confirmed",
+          "next_node": "node_exit",
+          "condition": "User shares all details"
+        }
+      ]
+    },
+    {
+      "node_id": "node_exit",
+      "node_name": "Call Exit",
+      "type": "conversation",
+      "is_start_node": false,
+      "speak_order": null,
+      "pause_before_speaking": null,
+      "prompt": "Thanks for your time. If you ever need natural joint care, visit vedabay.com. Wishing you good health!",
+      "static_sentence": null,
+      "skip_response": false,
+      "global_node": false,
+      "block_interruption": false,
+      "routes": null
+    }
+  ],
+  "room_name": "room-1a6a5a",
+  "agent_name": "agent-4906f8"
+}

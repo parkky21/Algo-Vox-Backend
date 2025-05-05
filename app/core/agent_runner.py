@@ -14,6 +14,7 @@ from livekit.plugins import openai, google, deepgram, silero
 from google.cloud.texttospeech import VoiceSelectionParams
 from app.core.config import get_agent_config 
 from app.core.models import AgentConfig
+from app.core.ws_manager import ws_manager
 
 LIVEKIT_API_KEY = "APIYzqLsmBChBFz"
 LIVEKIT_API_SECRET = "eVTStfVzKiQ1lTzVWxebpxzCKM5M6JFCesXJdJXZb4OA"
@@ -32,7 +33,7 @@ async def generate_function_tools(config, module):
             @function_tool(name=tool_name, description=f"Use this tool if {tool_definition}")
             async def tool_fn(context: RunContext):
                 chat_ctx = context.session._chat_ctx
-                return await create_agent(next_node_val, chat_ctx=chat_ctx, agent_config=context.session._agent_config)
+                return await create_agent(next_node_val, chat_ctx=chat_ctx, agent_config=context.session._agent_config,agent_id=agent_id_g)
             return tool_fn
 
         setattr(module, tool_name, make_tool(next_node))
@@ -82,7 +83,7 @@ class GenericAgent(Agent):
     async def on_enter(self):
         await self.session.generate_reply()
 
-async def create_agent(node_id: str, chat_ctx=None, agent_config=None) -> Agent:
+async def create_agent(node_id: str, chat_ctx=None, agent_config=None,agent_id=None) -> Agent:
     agent_flow = {node.node_id: node for node in agent_config.nodes}
 
     if node_id not in agent_flow:
@@ -97,6 +98,12 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None) -> Agent:
         await generate_function_tools(node_config.dict(), module)
         for route in node_config.routes:
             tools.append(getattr(module, route.tool_name))
+
+    if agent_id:
+        await ws_manager.send_node_update(
+            agent_id,
+            node_id
+            )
 
     return GenericAgent(
         prompt=prompt, 
@@ -194,7 +201,7 @@ async def entrypoint(ctx: JobContext):
         logger.error("No entry node found in the configuration")
         return
 
-    starting_agent = await create_agent(entry_node_id, agent_config=agent_config)
+    starting_agent = await create_agent(entry_node_id, agent_config=agent_config,agent_id=agent_id)
     await session.start(agent=starting_agent, room=ctx.room)
 
 async def agent_run(agent_name: Optional[str] = None, agent_id: Optional[str] = None):

@@ -9,7 +9,7 @@ import logging
 from app.core.models import  AgentResponse, AgentConfig, StartAgentRequest,StopAgentRequest
 from livekit import api
 from livekit.api import DeleteRoomRequest, LiveKitAPI
-from app.core.config import save_config,load_config,get_agent_config
+from app.core.config import save_config,load_all_configs,get_agent_config
 from app.core.agent_runner import agent_run
 from app.utils.token import get_token
 router = APIRouter()
@@ -25,7 +25,7 @@ agent_sessions = {}
 
 @asynccontextmanager
 async def lifespan(app):
-    load_config()
+    load_all_configs()
     app.state.lkapi = api.LiveKitAPI(
         url="wss://algo-vox-a45ok1i2.livekit.cloud",
         api_key="APIYzqLsmBChBFz",
