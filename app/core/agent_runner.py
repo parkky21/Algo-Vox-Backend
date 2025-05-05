@@ -1,23 +1,23 @@
 import logging
 import sys
-from typing import Optional, Dict, Any
+from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
 import json
 import os
 from livekit.agents import Worker
 from livekit import api
-from livekit.agents import JobContext, WorkerOptions, cli
+from livekit.agents import JobContext, WorkerOptions
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession, RunContext
 from livekit.plugins import openai, google, deepgram, silero
 from google.cloud.texttospeech import VoiceSelectionParams
 from app.core.config import get_agent_config 
+from app.core.models import AgentConfig
 
-LIVEKIT_API_KEY="APIYzqLsmBChBFz"
-LIVEKIT_API_SECRET="eVTStfVzKiQ1lTzVWxebpxzCKM5M6JFCesXJdJXZb4OA"
-LIVEKIT_URL="wss://algo-vox-a45ok1i2.livekit.cloud"
-
+LIVEKIT_API_KEY = "APIYzqLsmBChBFz"
+LIVEKIT_API_SECRET = "eVTStfVzKiQ1lTzVWxebpxzCKM5M6JFCesXJdJXZb4OA"
+LIVEKIT_URL = "wss://algo-vox-a45ok1i2.livekit.cloud"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -39,23 +39,20 @@ async def generate_function_tools(config, module):
 
 class GenericAgent(Agent):
     def __init__(self, prompt: str, tools: Optional[list] = None, chat_ctx=None, agent_config=None, node_config=None):
-        global_prompt = agent_config.get("global_settings", {}).get("global_prompt", "")
-        llm_config = agent_config.get("global_settings", {}).get("llm", {})
-        tts_config = agent_config.get("global_settings", {}).get("tts", {})
-        
-        llm_provider = llm_config.get("provider", "openai")
-        llm_model = llm_config.get("model", "gpt-4o-mini")
-        llm_api_key=llm_config.get("api_key")
+        global_prompt = agent_config.global_settings.global_prompt if agent_config.global_settings else ""
+        llm_config = agent_config.global_settings.llm if agent_config.global_settings else None
+        tts_config = agent_config.global_settings.tts if agent_config.global_settings else None
 
-        # # if llm_provider == "groq":
-        # #     llm_instance = groq.LLM(model=llm_model)
-        # else:
-        llm_instance = openai.LLM(model=llm_model,api_key=llm_api_key)
-        # Configure TTS
-        tts_provider = tts_config.get("provider", "google")
-        tts_voice = tts_config.get("model", "en-US-Wavenet-F")
-        tts_language = tts_config.get("language", "en-US")
-        
+        llm_provider = llm_config.provider
+        llm_model = llm_config.model
+        llm_api_key = llm_config.api_key
+
+        llm_instance = openai.LLM(model=llm_model, api_key=llm_api_key)
+
+        tts_provider = tts_config.provider
+        tts_voice = tts_config.model
+        tts_language = tts_config.language
+
         if tts_provider == "google":
             tts_instance = google.TTS(
                 voice=VoiceSelectionParams(
@@ -64,7 +61,6 @@ class GenericAgent(Agent):
                 )
             )
         else:
-            # Default to Google TTS
             tts_instance = google.TTS(
                 voice=VoiceSelectionParams(
                     name="en-US-Wavenet-F",
@@ -84,26 +80,23 @@ class GenericAgent(Agent):
         )
 
     async def on_enter(self):
-        # Check if we should speak first
-        # speak_order = self._node_config.get("speak_order", None)
-        # if speak_order == "ai_first":
         await self.session.generate_reply()
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None) -> Agent:
-    agent_flow = {node["node_id"]: node for node in agent_config.get("nodes", [])}
-    
+    agent_flow = {node.node_id: node for node in agent_config.nodes}
+
     if node_id not in agent_flow:
         raise ValueError(f"Node '{node_id}' not found. Available nodes: {list(agent_flow.keys())}")
 
     node_config = agent_flow[node_id]
-    prompt = node_config.get("prompt") or node_config.get("static_sentence", "")
+    prompt = node_config.prompt or node_config.static_sentence or ""
     tools = []
 
-    if "routes" in node_config:
+    if node_config.routes:
         module = sys.modules[__name__]
-        await generate_function_tools(node_config, module)
-        for route in node_config["routes"]:
-            tools.append(getattr(module, route["tool_name"]))
+        await generate_function_tools(node_config.dict(), module)
+        for route in node_config.routes:
+            tools.append(getattr(module, route.tool_name))
 
     return GenericAgent(
         prompt=prompt, 
@@ -115,48 +108,42 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None) -> Agent:
 
 async def entrypoint(ctx: JobContext):
     agent_id = agent_id_g
-    agent_config = get_agent_config(agent_id)
-    
-    if not agent_config:
+    raw_config = get_agent_config(agent_id)
+    if not raw_config:
         logger.error(f"Agent config not found for ID: {agent_id}")
+        return
+    agent_config = AgentConfig(**raw_config)
+
+    if not agent_config.nodes or not agent_config.global_settings:
+        logger.error(f"Incomplete agent config for flow execution: {agent_id}")
         return
 
     logger.info(f"Starting session in room: {ctx.room.name} with agent ID: {agent_id}")
     await ctx.connect()
 
-    # Get STT config
-    stt_config = agent_config.get("global_settings", {}).get("stt", {})
-    stt_provider = stt_config.get("provider", "deepgram")
-    stt_model = stt_config.get("model", "nova-3")
-    stt_language = stt_config.get("language", "en")
-    stt_api_key=stt_config.get("api_key")
+    stt_config = agent_config.global_settings.stt
+    stt_provider = stt_config.provider
+    stt_model = stt_config.model
+    stt_language = stt_config.language
+    stt_api_key = stt_config.api_key
 
-    # Get LLM config
-    llm_config = agent_config.get("global_settings", {}).get("llm", {})
-    llm_provider = llm_config.get("provider", "openai")
-    llm_model = llm_config.get("model", "gpt-4o-mini")
-    llm_api_key=llm_config.get("api_key")
+    llm_config = agent_config.global_settings.llm
+    llm_provider = llm_config.provider
+    llm_model = llm_config.model
+    llm_api_key = llm_config.api_key
 
-    # Get TTS config
-    tts_config = agent_config.get("global_settings", {}).get("tts", {})
-    tts_provider = tts_config.get("provider", "google")
-    tts_voice = tts_config.get("model", "en-US-Wavenet-F") 
-    tts_language = tts_config.get("language", "en-US")
+    tts_config = agent_config.global_settings.tts
+    tts_provider = tts_config.provider
+    tts_voice = tts_config.model
+    tts_language = tts_config.language
 
-    # Configure STT
     if stt_provider == "deepgram":
-        stt_instance = deepgram.STT(model=stt_model, language=stt_language,api_key=stt_api_key)
+        stt_instance = deepgram.STT(model=stt_model, language=stt_language, api_key=stt_api_key)
     else:
-        # Default to Deepgram
-        stt_instance = deepgram.STT(model="nova-3", language="en",api_key=stt_api_key)
-    
-    # Configure LLM
-    # if llm_provider == "groq":
-    #     llm_instance = groq.LLM(model=llm_model)
-    # else:
-    llm_instance = openai.LLM(model=llm_model,api_key=llm_api_key)
-    
-    # Configure TTS
+        stt_instance = deepgram.STT(model="nova-3", language="en", api_key=stt_api_key)
+
+    llm_instance = openai.LLM(model=llm_model, api_key=llm_api_key)
+
     if tts_provider == "google":
         tts_instance = google.TTS(
             voice=VoiceSelectionParams(
@@ -165,7 +152,6 @@ async def entrypoint(ctx: JobContext):
             )
         )
     else:
-        # Default to Google TTS
         tts_instance = google.TTS(
             voice=VoiceSelectionParams(
                 name="en-US-Wavenet-F",
@@ -179,8 +165,6 @@ async def entrypoint(ctx: JobContext):
         tts=tts_instance,
         vad=silero.VAD.load()
     )
-    
-    # Add agent config to session for access by tools
     session._agent_config = agent_config
 
     async def write_transcript():
@@ -199,15 +183,13 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(write_transcript)
 
-    entry_node_id = agent_config.get("entry_node")
-    if not entry_node_id:
-        # Find the start node if entry_node is not specified
-        nodes = agent_config.get("nodes", [])
+    entry_node_id = agent_config.entry_node
+    if not entry_node_id and agent_config.nodes:
         entry_node_id = next(
-            (node["node_id"] for node in nodes if node.get("is_start_node") is True), 
-            nodes[0]["node_id"] if nodes else None
+            (node.node_id for node in agent_config.nodes if node.is_start_node),
+            agent_config.nodes[0].node_id if agent_config.nodes else None
         )
-    
+
     if not entry_node_id:
         logger.error("No entry node found in the configuration")
         return
@@ -221,14 +203,14 @@ async def agent_run(agent_name: Optional[str] = None, agent_id: Optional[str] = 
         return
     global agent_id_g
     agent_id_g = agent_id
-        
+
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,
-        ws_url=LIVEKIT_URL,  # Replace with your LiveKit WebSocket URL
+        ws_url=LIVEKIT_URL,
         agent_name=agent_name or f"agent_{agent_id}",
         api_key=LIVEKIT_API_KEY,
         api_secret=LIVEKIT_API_SECRET,
     )
-    
+
     worker = Worker(opts=worker_options)
     await worker.run()

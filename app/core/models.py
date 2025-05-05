@@ -11,14 +11,6 @@ class ModelConfig(BaseModel):
     model_name: str
     additionalParameters: List[ModelParameter] = []
 
-class AgentConfig(BaseModel):
-    agent_id: Optional[str] = None
-    name: str
-    instructions: str
-    vector_store_ids: List[str]
-    STT: Optional[ModelConfig] = None
-    TTS: Optional[ModelConfig] = None
-    LLM: ModelConfig
 
 class ConnectAgentRequest(BaseModel):
     agent_id: str
@@ -106,18 +98,32 @@ class GlobalSettings(BaseModel):
     call_settings: Optional[CallSettings] = None
 
 class AgentConfig(BaseModel):
-    project_id: str
-    flow_id: str
+    # For Lite configs
+    agent_id: Optional[str] = None
+    name: Optional[str] = None
+    instructions: Optional[str] = None
+    vector_store_ids: Optional[List[str]] = None
+    STT: Optional[ModelConfig] = None
+    TTS: Optional[ModelConfig] = None
+    LLM: Optional[ModelConfig] = None
+    # For Flow configs
+    project_id: Optional[str] = None
+    flow_id: Optional[str] = None
     session_id: Optional[str] = None
     entry_node: Optional[str] = None
-    global_settings: GlobalSettings
-    nodes: List[NodeConfig]
+    global_settings: Optional[GlobalSettings] = None
+    nodes: Optional[List[NodeConfig]] = None
 
 class AgentResponse(BaseModel):
     agent_id: str
     message: str
 
+
 class StartAgentRequest(BaseModel):
     agent_id: str
     agent_name: Optional[str] = None
+
+class StopAgentRequest(BaseModel):
+    agent_id: str
+    room_name: Optional[str] = None
 

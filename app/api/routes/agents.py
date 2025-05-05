@@ -6,9 +6,10 @@ from contextlib import asynccontextmanager
 import asyncio
 import uuid
 import logging
-from app.core.models import  AgentResponse, AgentConfig, StartAgentRequest
-from livekit import api, agents
-from app.core.config import save_config
+from app.core.models import  AgentResponse, AgentConfig, StartAgentRequest,StopAgentRequest
+from livekit import api
+from livekit.api import DeleteRoomRequest, LiveKitAPI
+from app.core.config import save_config,load_config,get_agent_config
 from app.core.agent_runner import agent_run
 from app.utils.token import get_token
 router = APIRouter()
@@ -24,6 +25,7 @@ agent_sessions = {}
 
 @asynccontextmanager
 async def lifespan(app):
+    load_config()
     app.state.lkapi = api.LiveKitAPI(
         url="wss://algo-vox-a45ok1i2.livekit.cloud",
         api_key="APIYzqLsmBChBFz",
@@ -35,33 +37,6 @@ async def lifespan(app):
             session_info['task'].cancel()
     await app.state.lkapi._session.close()
 
-@router.post("")
-async def create_agent(config: AgentConfig):
-    agent_id = config.agent_id or str(uuid.uuid4())
-    if agent_id in agent_sessions:
-        raise HTTPException(status_code=400, detail="Agent ID already exists")
-
-    agent_sessions[agent_id] = {
-        "config": config.dict(),
-        "status": "created",
-        "vector_store_ids": config.vector_store_ids,
-        "room_name": None,
-        "active": False
-    }
-    return {"agent_id": agent_id, "status": "created"}
-
-@router.get("")
-async def list_agents():
-    return [
-        {
-            "id": agent_id,
-            "name": info["config"]["name"],
-            "status": info["status"],
-            "room_name": info["room_name"],
-            "active": info["active"]
-        }
-        for agent_id, info in agent_sessions.items()
-    ]
 
 @router.get("/{agent_id}")
 async def get_agent(agent_id: str):
@@ -103,9 +78,11 @@ async def configure_agent(config: AgentConfig):
     try:
         agent_id = str(uuid.uuid4())
         agent_configs[agent_id] = config.dict()
+        agent_name = f"agent-{uuid.uuid4().hex[:6]}"
+        room_name = f"room-{uuid.uuid4().hex[:6]}"
 
         # Save configuration to disk
-        save_config(agent_id, agent_configs[agent_id])
+        save_config(agent_id, agent_configs[agent_id],room_name=room_name,agent_name=agent_name)
 
         logger.info(f"Configured agent with ID: {agent_id}")
         return AgentResponse(
@@ -121,22 +98,32 @@ async def start_agent(request: StartAgentRequest):
     agent_id = request.agent_id
 
     try:
-        if agent_id not in agent_configs:
-            logger.warning(f"Agent ID {agent_id} not found")
-            raise HTTPException(status_code=404, detail=f"Agent ID {agent_id} not found")
+        # 1. Load agent config from disk
+        config = get_agent_config(agent_id)
+        if not config:
+            logger.warning(f"Agent config not found for ID: {agent_id}")
+            raise HTTPException(status_code=404, detail="Agent config not found")
 
+        # 2. Store it in in-memory cache (optional but useful)
+        agent_configs[agent_id] = config
         agent_name = f"agent-{uuid.uuid4().hex[:6]}"
         room_name = f"room-{uuid.uuid4().hex[:6]}"
+        config["agent_name"]=agent_name
+        config["room_name"]=room_name
+
+        # 3. Generate session-specific identifiers
+
         identity = f"user-{uuid.uuid4().hex[:6]}"
 
+        # 4. Generate LiveKit token
         logger.info(f"Generating token for agent {agent_name} in room {room_name}...")
-
         try:
             token = get_token(agent=agent_name, identity=identity, room=room_name)
         except Exception:
             logger.exception("Failed to generate LiveKit token")
             raise HTTPException(status_code=500, detail="Error generating access token")
 
+        # 5. Start agent session as a background task
         logger.info(f"Starting background task for agent {agent_name}...")
         try:
             task = asyncio.create_task(agent_run(agent_name=agent_name, agent_id=agent_id))
@@ -150,7 +137,9 @@ async def start_agent(request: StartAgentRequest):
             logger.exception("Failed to start background task for agent")
             raise HTTPException(status_code=500, detail="Failed to start agent background process")
 
+        # 6. Return success
         return {
+            "status": "success",
             "token": token,
             "agent_name": agent_name,
             "room_name": room_name,
@@ -159,24 +148,31 @@ async def start_agent(request: StartAgentRequest):
 
     except HTTPException as http_err:
         raise http_err
+
     except Exception as e:
         logger.exception("Unexpected error in start-agent")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-
 @router.post("/disconnect")
-async def disconnect_agent(request: StartAgentRequest):
+async def disconnect_agent(request: StopAgentRequest):
     agent_id = request.agent_id
+    config=get_agent_config(agent_id)
+    room_name=config.get("room_name")
     agent_info = agent_sessions.get(agent_id)
 
     if not agent_info:
         logger.warning(f"Agent {agent_id} not found for disconnection.")
         raise HTTPException(status_code=404, detail="Agent not found")
-    # from livekit.api import DeleteRoomRequest
-
-    # await lkapi.room.delete_room(DeleteRoomRequest(
-    # room="myroom",
-    # ))
+    try:
+        async with LiveKitAPI(
+            url=LIVEKIT_URL,
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET
+        ) as lkapi:
+            await lkapi.room.delete_room(DeleteRoomRequest(room=room_name))
+            logger.info(f"Room '{room_name}' deleted from LiveKit.")
+    except Exception as e:
+        logger.error(f"Failed to delete room '{room_name}': {e}")
 
     if not agent_info.get("active", False):
         logger.info(f"Agent {agent_id} is already inactive.")
@@ -191,7 +187,7 @@ async def disconnect_agent(request: StartAgentRequest):
         except asyncio.CancelledError:
             logger.info(f"Task for agent {agent_id} cancelled.")
         except Exception as e:
-            logger.exception(f"Error while cancelling task: {str(e)}")
+            logger.exception(f"Error while cancelling task for agent {agent_id}: {str(e)}")
 
     agent_info.update({
         "active": False,

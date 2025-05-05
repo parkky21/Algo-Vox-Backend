@@ -9,8 +9,6 @@ logger = logging.getLogger("config")
 # Default configuration directory
 CONFIG_DIR = os.path.join(os.getcwd(), "configs")
 
-
-
 # Ensure the config directory exists
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
@@ -19,16 +17,50 @@ AGENT_CONFIG = {}
 
 
 def load_config():
-    """Load global configuration"""
+    """Load the most recent global agent configuration into AGENT_CONFIG"""
     global AGENT_CONFIG
-    
-    # This function can be expanded to load from environment variables or config files
+
     logger.info("Loading configuration...")
 
-def save_config(agent_id: str, config: Dict[str, Any]) -> bool:
+    try:
+        config_files = [
+            f for f in os.listdir(CONFIG_DIR)
+            if os.path.isfile(os.path.join(CONFIG_DIR, f)) and f.endswith(".json")
+        ]
+
+        if not config_files:
+            logger.warning("No configuration files found.")
+            AGENT_CONFIG = {}
+            return
+
+        # Sort by modified time descending
+        config_files.sort(
+            key=lambda f: os.path.getmtime(os.path.join(CONFIG_DIR, f)),
+            reverse=True
+        )
+        latest_file = config_files[0]
+        latest_file_path = os.path.join(CONFIG_DIR, latest_file)
+
+        with open(latest_file_path, "r") as f:
+            AGENT_CONFIG = json.load(f)
+
+        logger.info(f"Configuration loaded from {latest_file_path}")
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        AGENT_CONFIG = {}
+
+def save_config(
+        agent_id: str, 
+        config: Dict[str, Any],
+        room_name: Optional[str] = None,
+        agent_name:Optional[str] = None
+        ) -> bool:
     """Save agent configuration to disk"""
     try:
         file_path = os.path.join(CONFIG_DIR, f"{agent_id}.json")
+        if room_name and agent_name:
+            config["room_name"] = room_name
+            config["agent_name"]=agent_name
         
         with open(file_path, "w") as f:
             json.dump(config, f, indent=2)
