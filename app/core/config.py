@@ -16,6 +16,15 @@ os.makedirs(CONFIG_DIR, exist_ok=True)
 AGENT_CONFIG = {}  # Latest config
 ALL_AGENT_CONFIGS: Dict[str, Dict[str, Any]] = {}  # All configs loaded by agent_id
 
+def ensure_config_dir():
+    """Ensure that the configuration directory exists."""
+    if not os.path.exists(CONFIG_DIR):
+        os.makedirs(CONFIG_DIR)
+        logger.info(f"Created config directory: {CONFIG_DIR}")
+    else:
+        logger.debug(f"Config directory already exists: {CONFIG_DIR}")
+
+# Call it at module level
 
 def load_all_configs():
     """Load all agent configurations from disk"""
@@ -65,6 +74,7 @@ def save_config(
     room_name: Optional[str] = None,
     agent_name: Optional[str] = None
 ) -> bool:
+    global ALL_AGENT_CONFIGS
     """Save agent configuration to disk and update in-memory store"""
     try:
         if room_name:
@@ -124,3 +134,5 @@ def delete_agent_config(agent_id: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to delete configuration: {e}")
         return False
+
+ensure_config_dir()
