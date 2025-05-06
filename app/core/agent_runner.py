@@ -23,7 +23,7 @@ LIVEKIT_URL = "wss://algo-vox-a45ok1i2.livekit.cloud"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
 
-async def generate_function_tools(config, module):
+async def generate_function_tools(config, module,agent_id):
     for route in config.get("routes", []):
         tool_name = route["tool_name"]
         next_node = route["next_node"]
@@ -33,7 +33,7 @@ async def generate_function_tools(config, module):
             @function_tool(name=tool_name, description=f"Use this tool if {tool_definition}")
             async def tool_fn(context: RunContext):
                 chat_ctx = context.session._chat_ctx
-                return await create_agent(next_node_val, chat_ctx=chat_ctx, agent_config=context.session._agent_config,agent_id=agent_id_g)
+                return await create_agent(next_node_val, chat_ctx=chat_ctx, agent_config=context.session._agent_config,agent_id=agent_id)
             return tool_fn
 
         setattr(module, tool_name, make_tool(next_node))
@@ -95,7 +95,7 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None,agent_id=N
 
     if node_config.routes:
         module = sys.modules[__name__]
-        await generate_function_tools(node_config.dict(), module)
+        await generate_function_tools(node_config.dict(), module,agent_id)
         for route in node_config.routes:
             tools.append(getattr(module, route.tool_name))
 
@@ -114,7 +114,7 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None,agent_id=N
     )
 
 async def entrypoint(ctx: JobContext):
-    agent_id = agent_id_g
+    agent_id = ctx.proc.userdata["agent_id"]
     raw_config = get_agent_config(agent_id)
     if not raw_config:
         logger.error(f"Agent config not found for ID: {agent_id}")
@@ -208,15 +208,17 @@ async def agent_run(agent_name: Optional[str] = None, agent_id: Optional[str] = 
     if not agent_id:
         logger.error("Agent ID is required")
         return
-    global agent_id_g
-    agent_id_g = agent_id
+
+    def prewarm_fnc(proc):
+        proc.userdata["agent_id"] = agent_id
 
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,
         ws_url=LIVEKIT_URL,
-        agent_name=agent_name or f"agent_{agent_id}",
+        agent_name=agent_name,
         api_key=LIVEKIT_API_KEY,
         api_secret=LIVEKIT_API_SECRET,
+        prewarm_fnc=prewarm_fnc
     )
 
     worker = Worker(opts=worker_options)
