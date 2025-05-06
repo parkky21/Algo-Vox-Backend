@@ -86,8 +86,6 @@ class TTSConfig(BaseModel):
     language: str
 
 class GlobalSettings(BaseModel):
-    language: str
-    voice: str
     global_prompt: str
     llm: LLMConfig
     stt: STTConfig

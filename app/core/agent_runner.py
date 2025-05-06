@@ -10,7 +10,7 @@ from livekit import api
 from livekit.agents import JobContext, WorkerOptions
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession, RunContext
-from livekit.plugins import openai, google, deepgram, silero
+from livekit.plugins import openai, google, deepgram, silero,groq
 from google.cloud.texttospeech import VoiceSelectionParams
 from app.core.config import get_agent_config 
 from app.core.models import AgentConfig
@@ -45,7 +45,21 @@ class GenericAgent(Agent):
         llm_model = llm_config.model
         llm_api_key = llm_config.api_key
 
-        llm_instance = openai.LLM(model=llm_model, api_key=llm_api_key)
+        if llm_provider == "gemini":
+            llm_instance = google.LLM(
+                model=llm_model,
+                api_key=llm_api_key,
+            )
+        elif llm_provider == "groq":
+            llm_instance = groq.LLM(
+                model=llm_model,
+                api_key=llm_api_key,
+            )
+        else:
+            llm_instance = openai.LLM(
+                model=llm_model,
+                api_key=llm_api_key,
+            )
 
         tts_provider = tts_config.provider
         tts_voice = tts_config.model
@@ -140,27 +154,44 @@ async def entrypoint(ctx: JobContext):
     tts_provider = tts_config.provider
     tts_voice = tts_config.model
     tts_language = tts_config.language
+    # tts_api_key= tts_config.api_key
+
+    if llm_provider == "gemini":
+        llm_instance = google.LLM(
+            model=llm_model,
+            api_key=llm_api_key,
+        )
+    elif llm_provider == "groq":
+        llm_instance = groq.LLM(
+            model=llm_model,
+            api_key=llm_api_key,
+        )
+    else:
+        llm_instance = openai.LLM(
+            model=llm_model,
+            api_key=llm_api_key,
+        )
 
     if stt_provider == "deepgram":
         stt_instance = deepgram.STT(model=stt_model, language=stt_language, api_key=stt_api_key)
     else:
         stt_instance = deepgram.STT(model="nova-3", language="en", api_key=stt_api_key)
 
-    llm_instance = openai.LLM(model=llm_model, api_key=llm_api_key)
-
     if tts_provider == "google":
         tts_instance = google.TTS(
             voice=VoiceSelectionParams(
                 name=tts_voice,
                 language_code=tts_language
-            )
+            ),
+            # credentials_info=tts_api_key
         )
     else:
         tts_instance = google.TTS(
             voice=VoiceSelectionParams(
-                name="en-US-Wavenet-F",
-                language_code="en-US"
-            )
+                name="en-IN-Chirp3-HD-Charon",
+                language_code="en-IN"
+            ),
+            # credentials_file=tts_api_key
         )
 
     session = AgentSession(
