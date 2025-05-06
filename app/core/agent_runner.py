@@ -15,10 +15,7 @@ from google.cloud.texttospeech import VoiceSelectionParams
 from app.core.config import get_agent_config 
 from app.core.models import AgentConfig
 from app.core.ws_manager import ws_manager
-
-LIVEKIT_API_KEY = "APIYzqLsmBChBFz"
-LIVEKIT_API_SECRET = "eVTStfVzKiQ1lTzVWxebpxzCKM5M6JFCesXJdJXZb4OA"
-LIVEKIT_URL = "wss://algo-vox-a45ok1i2.livekit.cloud"
+from app.core.settings import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -214,10 +211,10 @@ async def agent_run(agent_name: Optional[str] = None, agent_id: Optional[str] = 
 
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,
-        ws_url=LIVEKIT_URL,
+        ws_url=settings.LIVEKIT_URL,
         agent_name=agent_name,
-        api_key=LIVEKIT_API_KEY,
-        api_secret=LIVEKIT_API_SECRET,
+        api_key=settings.LIVEKIT_API_KEY,
+        api_secret=settings.LIVEKIT_API_SECRET,
         prewarm_fnc=prewarm_fnc
     )
 

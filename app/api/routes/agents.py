@@ -11,13 +11,12 @@ from livekit import api
 from livekit.api import DeleteRoomRequest, LiveKitAPI
 from app.core.config import save_config,load_all_configs,get_agent_config
 from app.core.agent_runner import agent_run
+from app.core.settings import settings
 from app.utils.token import get_token
 router = APIRouter()
 connect_router = APIRouter()
 
-LIVEKIT_API_KEY="APIYzqLsmBChBFz"
-LIVEKIT_API_SECRET="eVTStfVzKiQ1lTzVWxebpxzCKM5M6JFCesXJdJXZb4OA"
-LIVEKIT_URL="wss://algo-vox-a45ok1i2.livekit.cloud"
+
 agent_configs: Dict[str, dict] = {}
 
 logger = logging.getLogger(__name__)
@@ -165,9 +164,9 @@ async def disconnect_agent(request: StopAgentRequest):
         raise HTTPException(status_code=404, detail="Agent not found")
     try:
         async with LiveKitAPI(
-            url=LIVEKIT_URL,
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET
+            url=settings.LIVEKIT_URL,
+            api_key=settings.LIVEKIT_API_KEY,
+            api_secret=settings.LIVEKIT_API_SECRET
         ) as lkapi:
             await lkapi.room.delete_room(DeleteRoomRequest(room=room_name))
             logger.info(f"Room '{room_name}' deleted from LiveKit.")
