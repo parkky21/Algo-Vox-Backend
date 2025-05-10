@@ -9,6 +9,7 @@ livekit-api==1.0.2
 livekit-plugins-deepgram==1.0.17
 livekit-plugins-google==1.0.11
 livekit-plugins-openai==1.0.17
+livekit-plugins-groq==1.0.17
 livekit-plugins-silero==1.0.17
 livekit-plugins-turn-detector==1.0.17
 

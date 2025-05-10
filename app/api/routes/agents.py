@@ -125,7 +125,7 @@ async def start_agent(request: StartAgentRequest):
         # 5. Start agent session as a background task
         logger.info(f"Starting background task for agent {agent_name}...")
         try:
-            task = asyncio.create_task(agent_run(agent_name=agent_name, agent_id=agent_id))
+            task = asyncio.create_task(agent_run(agent_name=agent_name,room_name=room_name, agent_id=agent_id))
             agent_sessions[agent_id] = {
                 "active": True,
                 "status": "connected",
