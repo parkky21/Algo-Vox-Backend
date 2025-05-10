@@ -14,7 +14,6 @@ from livekit.plugins import silero
 from app.core.config import get_agent_config 
 from app.core.models import AgentConfig
 from app.utils.end_call_tool import end_call
-
 from app.core.ws_manager import ws_manager
 from app.core.settings import settings
 from app.utils.agent_builder import build_llm_instance, build_stt_instance, build_tts_instance
@@ -79,6 +78,7 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         for route in node_config.routes:
             tools.append(getattr(module, route.tool_name))
 
+    # if getattr(node_config, "is_exit_node", False):
     tools.append(end_call)
 
     if agent_id:

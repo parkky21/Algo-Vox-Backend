@@ -10,10 +10,9 @@ logger = logging.getLogger("end-call")
 async def end_call(context: RunContext) -> dict:
     """
     Use this tool if the customer doesn't have any query to end the call.
-    Sends a thank you reply and deletes the LiveKit room.
     """
     try:
-        await context.session.generate_reply(instructions="Thank the user for their time")
+        # await context.session.generate_reply(instructions="Thank the user for their time")
         job_ctx = get_job_context()
 
         room_name = job_ctx.room.name
