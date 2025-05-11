@@ -14,8 +14,6 @@ from app.core.agent_runner import agent_run
 from app.core.settings import settings
 from app.utils.token import get_token
 router = APIRouter()
-connect_router = APIRouter()
-
 
 agent_configs: Dict[str, dict] = {}
 

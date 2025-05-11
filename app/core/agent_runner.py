@@ -6,7 +6,7 @@ import json
 import os
 from livekit.agents import Worker
 from livekit import api
-
+from pathlib import Path
 from livekit.agents import JobContext, WorkerOptions
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession, RunContext
@@ -18,9 +18,37 @@ from app.core.ws_manager import ws_manager
 from app.core.settings import settings
 from app.utils.agent_builder import build_llm_instance, build_stt_instance, build_tts_instance
 from app.utils.helper import place_order,list_orders
+from llama_index.core import StorageContext, load_index_from_storage
+from app.api.routes.vector_stores import vector_stores
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
+
+def build_query_tool(store_id: str):
+    from livekit.agents.llm import function_tool
+
+    # Get embed_model from memory if loaded in `vector_stores` dict
+    vs_info = vector_stores.get(store_id)
+    if not vs_info:
+        raise ValueError(f"Vector store {store_id} not found in memory.")
+
+    provider = vs_info["config"].get("provider", "")
+    if provider.lower() == "openai":
+        os.environ["OPENAI_API_KEY"] = vs_info["config"].get("api_key", "")
+
+    store_path = Path("vector_stores") / store_id
+    storage_context = StorageContext.from_defaults(persist_dir=store_path)
+
+    index = load_index_from_storage(storage_context, embed_model=vs_info["embed_model"])
+    query_engine = index.as_query_engine(use_async=True)
+
+    @function_tool()
+    async def query_info(query: str) -> str:
+        """Use this tool to know about a specific topic or information"""
+        result = await query_engine.aquery(query)
+        return str(result)
+
+    return query_info
 
 async def generate_function_tools(config, module, agent_id):
     for route in config.get("routes", []):
@@ -62,6 +90,16 @@ class GenericAgent(Agent):
 
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
+    tools = []
+
+    if getattr(agent_config, "vector_store_id", None):
+        try:
+            query_tool = build_query_tool(agent_config.vector_store_id)
+            tools.append(query_tool)
+            print(f"Added query tool for vector store ID: {agent_config.vector_store_id}")
+        except Exception as e:
+            logger.error(f"Failed to load vector store tool: {e}")
+
     agent_flow = {node.node_id: node for node in agent_config.nodes}
 
     if node_id not in agent_flow:
@@ -70,7 +108,6 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
     node_config = agent_flow[node_id]
     node_type = node_config.type
     prompt = node_config.prompt or node_config.static_sentence or ""
-    tools = []
 
     if node_config.routes:
         module = sys.modules[__name__]

@@ -100,7 +100,7 @@ class AgentConfig(BaseModel):
     agent_id: Optional[str] = None
     name: Optional[str] = None
     instructions: Optional[str] = None
-    vector_store_ids: Optional[List[str]] = None
+    vector_store_id: Optional[str] = None
     STT: Optional[ModelConfig] = None
     TTS: Optional[ModelConfig] = None
     LLM: Optional[ModelConfig] = None
