@@ -78,7 +78,6 @@ async def configure_agent(config: AgentConfig):
         agent_name = f"agent-{uuid.uuid4().hex[:6]}"
         room_name = f"room-{uuid.uuid4().hex[:6]}"
 
-        # Save configuration to disk
         save_config(agent_id, agent_configs[agent_id],room_name=room_name,agent_name=agent_name)
 
         logger.info(f"Configured agent with ID: {agent_id}")

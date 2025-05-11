@@ -72,7 +72,12 @@ class GenericAgent(Agent):
         tts_config = agent_config.global_settings.tts if agent_config.global_settings else None
 
         llm_instance = build_llm_instance(llm_config.provider, llm_config.model, llm_config.api_key)
-        tts_instance = build_tts_instance(tts_config.provider, tts_config.model, tts_config.language)
+        tts_instance = build_tts_instance(
+            tts_config.provider,
+            tts_config.model,
+            tts_config.language,
+            credentials_info=tts_config.api_key,
+        )
 
         self._agent_config = agent_config
         self._node_config = node_config
@@ -186,8 +191,12 @@ async def entrypoint(ctx: JobContext):
 
     llm_instance = build_llm_instance(llm_config.provider, llm_config.model, llm_config.api_key)
     stt_instance = build_stt_instance(stt_config.provider, stt_config.model, stt_config.language, stt_config.api_key)
-    tts_instance = build_tts_instance(tts_config.provider, tts_config.model, tts_config.language)
-
+    tts_instance = build_tts_instance(
+                tts_config.provider,
+                tts_config.model,
+                tts_config.language,
+                credentials_info=tts_config.api_key,
+            )
     session = AgentSession(
         stt=stt_instance,
         llm=llm_instance,

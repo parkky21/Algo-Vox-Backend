@@ -1,6 +1,5 @@
 from livekit.plugins import openai, google, deepgram, groq
 from google.cloud.texttospeech import VoiceSelectionParams
-from livekit.agents.llm import function_tool
 
 def build_llm_instance(provider: str, model: str, api_key: str):
     if provider == "gemini":
@@ -14,7 +13,9 @@ def build_stt_instance(provider: str, model: str, language: str, api_key: str):
         return deepgram.STT(model=model, language=language, api_key=api_key)
     return deepgram.STT(model="nova-3", language="en", api_key=api_key)
 
-def build_tts_instance(provider: str, model: str, language: str):
+def build_tts_instance(provider: str, model: str, language: str, credentials_info: dict | str = None):
     if provider == "google":
-        return google.TTS(voice=VoiceSelectionParams(name=model, language_code=language))
-    return google.TTS(voice=VoiceSelectionParams(name="en-IN-Chirp3-HD-Charon", language_code="en-IN"))
+        return google.TTS(voice=VoiceSelectionParams(name=model, language_code=language),credentials_info=credentials_info)
+    elif provider == "deepgram":
+        return deepgram.TTS(model=model, language=language, credentials_info=credentials_info)
+    return google.TTS(voice=VoiceSelectionParams(name="en-IN-Chirp3-HD-Charon", language_code="en-IN"),credentials_info=credentials_info)

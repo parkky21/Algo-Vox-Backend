@@ -1,5 +1,5 @@
 # app/core/models.py
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel
 
 class ModelParameter(BaseModel):
@@ -84,6 +84,7 @@ class TTSConfig(BaseModel):
     provider: str
     model: str
     language: str
+    api_key: Union[str, dict]
 
 class GlobalSettings(BaseModel):
     global_prompt: str
