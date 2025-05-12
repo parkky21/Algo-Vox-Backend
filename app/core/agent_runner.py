@@ -44,13 +44,13 @@ def build_query_tool(store_id: str):
     @function_tool()
     async def query_info(context:RunContext,query: str) -> str:
         """Use this tool to know about a specific topic or information"""
-        # context.session.input.set_audio_enabled(False) 
+        context.session.input.set_audio_enabled(False) 
         await context.session.generate_reply(
         instructions=f"Searching the knowledge base for \"{query}\"",
         allow_interruptions=False
         )
         result = await query_engine.aquery(query)
-        # context.session.input.set_audio_enabled(True)
+        context.session.input.set_audio_enabled(True)
         return str(result)
 
     return query_info
