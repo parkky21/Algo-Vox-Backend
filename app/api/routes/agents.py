@@ -114,7 +114,7 @@ async def start_agent(request: StartAgentRequest):
         # 4. Generate LiveKit token
         logger.info(f"Generating token for agent {agent_name} in room {room_name}...")
         try:
-            token = get_token(agent=agent_name, identity=identity, room=room_name)
+            token = get_token(agent=agent_name,agent_id=agent_id, identity=identity, room=room_name)
         except Exception:
             logger.exception("Failed to generate LiveKit token")
             raise HTTPException(status_code=500, detail="Error generating access token")

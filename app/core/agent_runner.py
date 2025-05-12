@@ -5,11 +5,10 @@ from datetime import datetime
 import json
 import os
 from livekit.agents import Worker
-from livekit import api
 from pathlib import Path
-from livekit.agents import JobContext, WorkerOptions
+from livekit.agents import JobContext, WorkerOptions,RunContext
 from livekit.agents.llm import function_tool
-from livekit.agents.voice import Agent, AgentSession, RunContext
+from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import silero
 from app.core.config import get_agent_config 
 from app.core.models import AgentConfig
@@ -43,9 +42,15 @@ def build_query_tool(store_id: str):
     query_engine = index.as_query_engine(use_async=True)
 
     @function_tool()
-    async def query_info(query: str) -> str:
+    async def query_info(context:RunContext,query: str) -> str:
         """Use this tool to know about a specific topic or information"""
+        # context.session.input.set_audio_enabled(False) 
+        await context.session.generate_reply(
+        instructions=f"Searching the knowledge base for \"{query}\"",
+        allow_interruptions=False
+        )
         result = await query_engine.aquery(query)
+        # context.session.input.set_audio_enabled(True)
         return str(result)
 
     return query_info
@@ -125,10 +130,11 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
 
     if agent_id:
         await ws_manager.send_node_update(agent_id, node_id)
+
         all_bookings = list_orders()
-        print("----------------------------")
+        print("------------- Node Changed ---------------")
         print(all_bookings)
-        print("----------------------------")
+        print("------------------------------------------")
 
     if node_type == "conversation":
         return GenericAgent(
@@ -171,7 +177,9 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         raise ValueError(f"Unknown node type: {node_type}")
 
 async def entrypoint(ctx: JobContext):
-    agent_id = ctx.proc.userdata["agent_id"]
+    metadata = json.loads(ctx.job.metadata)
+    agent_id = metadata["agent_id"]
+    
     raw_config = get_agent_config(agent_id)
     if not raw_config:
         logger.error(f"Agent config not found for ID: {agent_id}")
@@ -240,17 +248,12 @@ async def agent_run(agent_name: str,room_name:str, agent_id: Optional[str] = Non
         logger.error("Agent ID is required")
         return
 
-    def prewarm_fnc(proc):
-        proc.userdata["agent_id"] = agent_id
-        proc.userdata["room_name"] = room_name
-
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,
         ws_url=settings.LIVEKIT_URL,
         agent_name=agent_name,
         api_key=settings.LIVEKIT_API_KEY,
         api_secret=settings.LIVEKIT_API_SECRET,
-        prewarm_fnc=prewarm_fnc
     )
 
     worker = Worker(opts=worker_options)
