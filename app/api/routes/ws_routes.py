@@ -1,9 +1,6 @@
-from fastapi import APIRouter, WebSocket
+from fastapi import WebSocket
 from app.core.ws_manager import ws_manager
 
-router = APIRouter()
-
-@router.websocket("/ws/agent/{agent_id}")
 async def agent_ws(websocket: WebSocket, agent_id: str):
     await ws_manager.connect(agent_id, websocket)
     try:

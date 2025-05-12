@@ -46,7 +46,7 @@ def build_query_tool(store_id: str):
         """Use this tool to know about a specific topic or information"""
         context.session.input.set_audio_enabled(False) 
         await context.session.generate_reply(
-        instructions=f"Searching the knowledge base for \"{query}\"",
+        instructions=f"Prompt the user that your searching the records for \"{query}\" and ask to wait for a moment",
         allow_interruptions=False
         )
         result = await query_engine.aquery(query)

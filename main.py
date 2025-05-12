@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import vector_stores, agents, ws_routes
+from app.api.routes import vector_stores, agents
+from app.api.routes.ws_routes import agent_ws
 
-# Initialize FastAPI with agent lifespan hook
 app = FastAPI(
     title="Algo Vox API",
     description="Voice agent system with vector search integration",
@@ -22,10 +22,8 @@ app.add_middleware(
 # Routers
 app.include_router(vector_stores.router, prefix="/vector_stores", tags=["Vector Stores"])
 app.include_router(agents.router, prefix="/agents", tags=["Agents"])
-# app.include_router(agents.connect_router, tags=["Agent Connection"])
-app.include_router(ws_routes.router, prefix="/ws", tags=["WebSocket"])
+app.add_api_websocket_route("/ws/agent/{agent_id}", agent_ws)
 
-# For local dev with reload
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="debug")
