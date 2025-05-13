@@ -12,7 +12,7 @@ from livekit.api import DeleteRoomRequest, LiveKitAPI
 from app.core.config import save_config,load_all_configs,get_agent_config
 from app.core.agent_runner import agent_run
 from app.core.settings import settings
-from app.utils.token import get_token
+from app.utils.token import get_token,generate_ws_token
 router = APIRouter()
 
 agent_configs: Dict[str, dict] = {}
@@ -129,6 +129,7 @@ async def start_agent(request: StartAgentRequest):
                 "room_name": room_name,
                 "task": task
             }
+            ws_token = generate_ws_token(agent_id)
         except Exception:
             logger.exception("Failed to start background task for agent")
             raise HTTPException(status_code=500, detail="Failed to start agent background process")
@@ -137,6 +138,7 @@ async def start_agent(request: StartAgentRequest):
         return {
             "status": "success",
             "token": token,
+            "ws_token": ws_token,
             "agent_name": agent_name,
             "room_name": room_name,
             "message": f"Agent {agent_id} started successfully"
