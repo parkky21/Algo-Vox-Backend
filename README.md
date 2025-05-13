@@ -60,19 +60,41 @@ Agent logic is defined using JSON-based nodes:
 
 ---
 
-## 💬 Real-time WebSocket Updates
+### 🔒 WebSocket Authentication Implementation
 
-Backend emits real-time node transitions as the agent flows through the conversation:
+We've enhanced the WebSocket system with token-based authentication to improve security. Please note these changes when connecting to agent WebSockets:
+
+#### How to Connect to Agent WebSockets
+
+1. When starting an agent via the `/agents/start-agent` endpoint, you'll now receive a `ws_token` in the response:
 
 ```json
 {
-  "type": "node_switched",
-  "agent_id": "uuid",
-  "node_id": "node_1"
+  "status": "success",
+  "token": "livekit_token_for_audio",
+  "ws_token": "websocket_auth_token",  // Use this for WebSocket connections
+  "agent_name": "agent-abc123",
+  "room_name": "room-def456",
+  "message": "Agent started successfully"
 }
 ```
 
-Use this to visually update the frontend.
+2. Include this token as a query parameter when connecting to the WebSocket:
+
+```javascript
+// Frontend code example
+const ws = new WebSocket(`ws://api-url/ws/agent/${agentId}?token=${wsToken}`);
+```
+
+#### For Developers
+
+The WebSocket system now implements:
+- Token-based authentication
+- IP-based rate limiting (max 5 connections per IP)
+- Better error handling and connection management
+- Connection tracking and stale connection cleanup
+
+If you need to modify the WebSocket authentication logic, check the `WebSocketManager` class in `app/core/ws_manager.py` and the WebSocket route handler in `app/api/routes/ws_routes.py`.
 
 ---
 
