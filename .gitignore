@@ -8,4 +8,3 @@ configs/
 transcripts/
 mythical-zodiac-456719-p0-02457d44229a.json
 vector_stores/
-app/api/routes/agents.py
