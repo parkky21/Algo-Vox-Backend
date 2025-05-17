@@ -1,6 +1,6 @@
 # app/api/routes/agents.py
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body, Request
-from typing import Dict, List, Optional, Any
+from typing import Dict ,Any
 from uuid import uuid4
 from contextlib import asynccontextmanager
 import asyncio
@@ -13,6 +13,7 @@ from app.core.config import save_config,load_all_configs,get_agent_config
 from app.core.agent_runner import agent_run
 from app.core.settings import settings
 from app.utils.token import get_token,generate_ws_token
+from app.api.routes.vector_stores import load_vector_stores
 router = APIRouter()
 
 agent_configs: Dict[str, dict] = {}
@@ -23,10 +24,11 @@ agent_sessions = {}
 @asynccontextmanager
 async def lifespan(app):
     load_all_configs()
+    load_vector_stores()
     app.state.lkapi = api.LiveKitAPI(
-        url="wss://algo-vox-a45ok1i2.livekit.cloud",
-        api_key="APIYzqLsmBChBFz",
-        api_secret="eVTStfVzKiQ1lTzVWxebpxzCKM5M6JFCesXJdJXZb4OA",
+        url=settings.LIVEKIT_URL,
+        api_key=settings.LIVEKIT_API_KEY,
+        api_secret=settings.LIVEKIT_API_SECRET,
     )
     yield
     for agent_id, session_info in list(agent_sessions.items()):
@@ -122,7 +124,7 @@ async def start_agent(request: StartAgentRequest):
         # 5. Start agent session as a background task
         logger.info(f"Starting background task for agent {agent_name}...")
         try:
-            task = asyncio.create_task(agent_run(agent_name=agent_name,room_name=room_name, agent_id=agent_id))
+            task = asyncio.create_task(agent_run(agent_name=agent_name, agent_id=agent_id))
             agent_sessions[agent_id] = {
                 "active": True,
                 "status": "connected",

@@ -1,6 +1,6 @@
 from fastapi import FastAPI,Depends, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import vector_stores, agents
+from app.api.routes import vector_stores, agents,flow
 from app.api.routes.ws_routes import agent_ws
 from app.api.dependencies import validate_ws_token
 
@@ -31,7 +31,8 @@ async def protected_agent_ws(
 
 # Routers
 app.include_router(vector_stores.router, prefix="/vector_stores", tags=["Vector Stores"])
-app.include_router(agents.router, prefix="/agents", tags=["Agents"])
+# app.include_router(agents.router, prefix="/agents", tags=["Agents"])
+app.include_router(flow.router, prefix="/v1", tags=["Agent"])
 app.add_api_websocket_route("/ws/agent/{agent_id}", protected_agent_ws)
 
 if __name__ == "__main__":

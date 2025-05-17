@@ -11,7 +11,6 @@ class ModelConfig(BaseModel):
     model_name: str
     additionalParameters: List[ModelParameter] = []
 
-
 class ConnectAgentRequest(BaseModel):
     agent_id: str
     room_name:Optional [str]=None
@@ -40,7 +39,6 @@ class NodeConfig(BaseModel):
     node_id: str
     node_name: str
     type: str
-    is_start_node: Optional[bool] = False
     speak_order: Optional[str] = None
     pause_before_speaking: Optional[int] = None
     prompt: Optional[str] = None
@@ -87,29 +85,19 @@ class TTSConfig(BaseModel):
     api_key: Union[str, dict]
 
 class GlobalSettings(BaseModel):
+    vector_store_id: Optional[str] = None 
     global_prompt: str
     llm: LLMConfig
     stt: STTConfig
     tts: TTSConfig
     temperature: Optional[float] = 0.7
-    knowledge_base_id: Optional[str] = None
     speech_settings: Optional[SpeechSettings] = None
     call_settings: Optional[CallSettings] = None
 
 class AgentConfig(BaseModel):
-    # For Lite configs
-    agent_id: Optional[str] = None
-    name: Optional[str] = None
-    instructions: Optional[str] = None
-    vector_store_id: Optional[str] = None
-    STT: Optional[ModelConfig] = None
-    TTS: Optional[ModelConfig] = None
-    LLM: Optional[ModelConfig] = None
     # For Flow configs
-    project_id: Optional[str] = None
-    flow_id: Optional[str] = None
-    session_id: Optional[str] = None
     entry_node: Optional[str] = None
+     # For both Lite and Flow configs
     global_settings: Optional[GlobalSettings] = None
     nodes: Optional[List[NodeConfig]] = None
 

@@ -1,12 +1,13 @@
 from livekit.plugins import openai, google, deepgram, groq
 from google.cloud.texttospeech import VoiceSelectionParams
+from typing import Optional
 
-def build_llm_instance(provider: str, model: str, api_key: str):
+def build_llm_instance(provider: str, model: str, api_key: str, temperature: Optional[float]=None):
     if provider == "gemini":
-        return google.LLM(model=model, api_key=api_key)
+        return google.LLM(model=model, api_key=api_key,temperature=temperature)
     elif provider == "groq":
-        return groq.LLM(model=model, api_key=api_key)
-    return openai.LLM(model=model, api_key=api_key)
+        return groq.LLM(model=model, api_key=api_key,temperature=temperature)
+    return openai.LLM(model=model, api_key=api_key,temperature=temperature)
 
 def build_stt_instance(provider: str, model: str, language: str, api_key: str):
     if provider == "deepgram":

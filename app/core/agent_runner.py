@@ -5,7 +5,6 @@ from datetime import datetime
 import json
 import os
 from livekit.agents import Worker
-from pathlib import Path
 from livekit.agents import JobContext, WorkerOptions,RunContext
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession
@@ -18,6 +17,7 @@ from app.core.settings import settings
 from app.utils.agent_builder import build_llm_instance, build_stt_instance, build_tts_instance
 from app.utils.helper import place_order,list_orders
 from app.utils.query_tool import build_query_tool
+from app.utils.mongodb_client import MongoDBClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -43,7 +43,7 @@ class GenericAgent(Agent):
         llm_config = agent_config.global_settings.llm if agent_config.global_settings else None
         tts_config = agent_config.global_settings.tts if agent_config.global_settings else None
 
-        llm_instance = build_llm_instance(llm_config.provider, llm_config.model, llm_config.api_key)
+        llm_instance = build_llm_instance(llm_config.provider, llm_config.model, llm_config.api_key,agent_config.global_settings.temperature)
         tts_instance = build_tts_instance(
             tts_config.provider,
             tts_config.model,
@@ -69,11 +69,13 @@ class GenericAgent(Agent):
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
     tools = []
 
-    if getattr(agent_config, "vector_store_id", None):
+    if getattr(agent_config.global_settings, "vector_store_id", None):
+        logger.info(f"Loading vector store tool for agent ID: {agent_id}")
+
         try:
-            query_tool = build_query_tool(agent_config.vector_store_id)
+            query_tool = build_query_tool(agent_config.global_settings.vector_store_id)
+            logger.info(f"Vector store tool loaded: {agent_config.global_settings.vector_store_id}")
             tools.append(query_tool)
-            print(f"Added query tool for vector store ID: {agent_config.vector_store_id}")
         except Exception as e:
             logger.error(f"Failed to load vector store tool: {e}")
 
@@ -84,7 +86,10 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
 
     node_config = agent_flow[node_id]
     node_type = node_config.type
-    prompt = node_config.prompt or node_config.static_sentence or ""
+    if node_config.prompt:
+        prompt = node_config.prompt
+    elif node_config.static_sentence:
+        prompt =f"Say: {node_config.static_sentence}"
 
     if node_config.routes:
         module = sys.modules[__name__]
@@ -99,9 +104,8 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         await ws_manager.send_node_update(agent_id, node_id)
 
         all_bookings = list_orders()
-        print("------------- Node Changed ---------------")
-        print(all_bookings)
-        print("------------------------------------------")
+        logger.info(f"Node switched to: {node_id}")
+        logger.debug(f"Orders: {all_bookings}")
 
     if node_type == "conversation":
         return GenericAgent(
@@ -144,76 +148,91 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         raise ValueError(f"Unknown node type: {node_type}")
 
 async def entrypoint(ctx: JobContext):
-    metadata = json.loads(ctx.job.metadata)
-    agent_id = metadata["agent_id"]
-    
-    raw_config = get_agent_config(agent_id)
-    if not raw_config:
-        logger.error(f"Agent config not found for ID: {agent_id}")
-        return
-    agent_config = AgentConfig(**raw_config)
+    try:
+        metadata = json.loads(ctx.job.metadata)
+        agent_id = metadata["agent_id"]
 
-    if not agent_config.nodes or not agent_config.global_settings:
-        logger.error(f"Incomplete agent config for flow execution: {agent_id}")
-        return
+        # 🔁 Load config from MongoDB
+        mongo_client = MongoDBClient()
+        flow = mongo_client.get_flow_by_id(agent_id)
 
-    logger.info(f"Starting session in room: {ctx.room.name} with agent ID: {agent_id}")
-    await ctx.connect()
+        if not flow:
+            logger.error(f"Agent config not found in MongoDB for ID: {agent_id}")
+            return
 
-    stt_config = agent_config.global_settings.stt
-    llm_config = agent_config.global_settings.llm
-    tts_config = agent_config.global_settings.tts
+        # 🔧 Patch TTS private_key if needed
+        api_key = flow.get("global_settings", {}).get("tts", {}).get("api_key")
+        if isinstance(api_key, dict):
+            private_key = api_key.get("private_key")
+            if private_key and "\\n" in private_key:
+                api_key["private_key"] = private_key.replace("\\n", "\n")
 
-    llm_instance = build_llm_instance(llm_config.provider, llm_config.model, llm_config.api_key)
-    stt_instance = build_stt_instance(stt_config.provider, stt_config.model, stt_config.language, stt_config.api_key)
-    tts_instance = build_tts_instance(
-                tts_config.provider,
-                tts_config.model,
-                tts_config.language,
-                credentials_info=tts_config.api_key,
-            )
-    session = AgentSession(
-        stt=stt_instance,
-        llm=llm_instance,
-        tts=tts_instance,
-        vad=silero.VAD.load()
-    )
-    session._agent_config = agent_config
+        agent_config = AgentConfig(**flow)
 
-    async def write_transcript():
-        try:
-            current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = os.path.join(os.getcwd(), "transcripts")
-            os.makedirs(output_dir, exist_ok=True)
-            file_path = os.path.join(output_dir, f"transcript_{ctx.room.name}_{current_date}.json")
+        if not agent_config.nodes or not agent_config.global_settings:
+            logger.error(f"Incomplete agent config for flow execution: {agent_id}")
+            return
 
-            with open(file_path, "w") as f:
-                json.dump(session.history.to_dict(), f, indent=2)
+        logger.info(f"Starting session in room: {ctx.room.name} with agent ID: {agent_id}")
+        await ctx.connect()
 
-            logger.info(f"Transcript saved at: {file_path}")
-        except Exception as e:
-            logger.error(f"Failed to write transcript: {e}")
-
-    ctx.add_shutdown_callback(write_transcript)
-
-    entry_node_id = agent_config.entry_node
-    if not entry_node_id and agent_config.nodes:
-        entry_node_id = next(
-            (node.node_id for node in agent_config.nodes if node.is_start_node),
-            agent_config.nodes[0].node_id if agent_config.nodes else None
+        # 🔧 Build components
+        llm = build_llm_instance(
+            agent_config.global_settings.llm.provider,
+            agent_config.global_settings.llm.model,
+            agent_config.global_settings.llm.api_key,
+            agent_config.global_settings.temperature
+        )
+        stt = build_stt_instance(
+            agent_config.global_settings.stt.provider,
+            agent_config.global_settings.stt.model,
+            agent_config.global_settings.stt.language,
+            agent_config.global_settings.stt.api_key
+        )
+        tts = build_tts_instance(
+            agent_config.global_settings.tts.provider,
+            agent_config.global_settings.tts.model,
+            agent_config.global_settings.tts.language,
+            credentials_info=agent_config.global_settings.tts.api_key
         )
 
-    if not entry_node_id:
-        logger.error("No entry node found in the configuration")
-        return
+        session = AgentSession(stt=stt, llm=llm, tts=tts, vad=silero.VAD.load())
+        session._agent_config = agent_config
 
-    starting_agent = await create_agent(entry_node_id, agent_config=agent_config, agent_id=agent_id)
-    await session.start(agent=starting_agent, room=ctx.room)
+        async def write_transcript():
+            try:
+                current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_dir = os.path.join(os.getcwd(), "transcripts")
+                os.makedirs(output_dir, exist_ok=True)
+                file_path = os.path.join(output_dir, f"transcript_{ctx.room.name}_{current_date}.json")
 
-async def agent_run(agent_name: str,room_name:str, agent_id: Optional[str] = None):
+                with open(file_path, "w") as f:
+                    json.dump(session.history.to_dict(), f, indent=2)
+
+                logger.info(f"Transcript saved at: {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to write transcript: {e}")
+
+        ctx.add_shutdown_callback(write_transcript)
+
+        # 🌟 Launch the first node
+        entry_node = agent_config.entry_node
+        if not entry_node:
+            logger.error("No entry node found in agent config")
+            return
+
+        agent = await create_agent(entry_node, agent_config=agent_config, agent_id=agent_id)
+        await session.start(agent=agent, room=ctx.room)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error in entrypoint: {e}")
+
+async def agent_run(agent_name: str, agent_id: Optional[str] = None):
     if not agent_id:
         logger.error("Agent ID is required")
         return
+    if "\\x3a" in settings.LIVEKIT_URL:
+        settings.LIVEKIT_URL = settings.LIVEKIT_URL.replace("\\x3a", ":")
 
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,

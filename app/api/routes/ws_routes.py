@@ -1,4 +1,5 @@
-from fastapi import WebSocket, HTTPException, status
+import asyncio
+from fastapi import WebSocket, status
 from app.core.ws_manager import ws_manager
 from app.utils.token import verify_ws_token
 
