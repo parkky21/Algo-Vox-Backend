@@ -14,7 +14,6 @@ logger = logging.getLogger("agent-runner")
 
 router = APIRouter()
 mongo_client = MongoDBClient()
-mongo_client.connect()
 
 agent_sessions = {}
 
@@ -26,12 +25,6 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
         raise HTTPException(status_code=404, detail="Agent config not found in MongoDB")
 
     try:
-        # tts_api_key = flow.get("global_settings", {}).get("tts", {}).get("api_key")
-        # if isinstance(tts_api_key, dict):
-        #     pk = tts_api_key.get("private_key")
-        #     if pk and "\\n" in pk:
-        #         tts_api_key["private_key"] = pk.replace("\\n", "\n")
-
         room_name = f"room-{uuid.uuid4().hex[:6]}"
         agent_name = f"agent-{uuid.uuid4().hex[:6]}"
         identity = f"user-{uuid.uuid4().hex[:6]}"

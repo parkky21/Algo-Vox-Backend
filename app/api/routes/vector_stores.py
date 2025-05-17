@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Body, Path, Query, status
+from fastapi import APIRouter, HTTPException, Body, Path, status,UploadFile, File
 from app.core.models import VectorStoreConfig, DocumentUpload
 from typing import Optional, List, Dict, Any
 import uuid
@@ -16,6 +16,8 @@ from llama_index.core import (
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.gemini import GeminiEmbedding
+from datetime import datetime
+import shutil
 
 router = APIRouter()
 
@@ -143,10 +145,10 @@ async def create_vector_store(config: VectorStoreConfig = Body(...)):
 @router.post("/{store_id}/documents", status_code=status.HTTP_201_CREATED)
 async def add_document(
     store_id: str = Path(..., description="Vector store ID"),
-    document: DocumentUpload = Body(...)
+    file: UploadFile = File(...)
 ):
     if store_id not in vector_stores:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vector store not found")
+        raise HTTPException(status_code=404, detail="Vector store not found")
 
     temp_path = None
     try:
@@ -154,73 +156,62 @@ async def add_document(
         config = vs_info.get("config", {})
         chunk_size = config.get("chunk_size", 512)
         chunk_overlap = config.get("chunk_overlap", 100)
-        
+
         embed_model = vs_info["embed_model"]
         store_path = VECTOR_BASE_DIR / store_id
 
-        # Create a temporary file with the document content
-        suffix = f".{document.document_type}" if document.document_type else ".txt"
-        with tempfile.NamedTemporaryFile(delete=False, mode="w+", suffix=suffix) as temp_file:
-            temp_file.write(document.document_content)
+        suffix = FsPath(file.filename).suffix or ".txt"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
             temp_path = FsPath(temp_file.name)
 
-        # Load document from the temporary file
         reader = SimpleDirectoryReader(input_files=[str(temp_path)])
         documents = reader.load_data()
 
-        # Create the node splitter
-        splitter = SentenceSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
-        
-        # Get nodes from the document
+        splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         nodes = splitter.get_nodes_from_documents(documents)
 
-        # Get the index from memory or create new one if needed
         index = vs_info.get("index")
         if not index:
             try:
-                # Try to load from disk
                 storage_context = StorageContext.from_defaults(persist_dir=str(store_path))
                 index = load_index_from_storage(storage_context, embed_model=embed_model)
             except Exception as e:
-                logger.error(f"Error loading index for {store_id}, creating new one: {e}")
+                logger.warning(f"Could not load index from disk: {e}, creating a new one.")
                 index = VectorStoreIndex(nodes=[], embed_model=embed_model)
-                index.storage_context.persist(persist_dir=str(store_path))
-        
-        # Insert the new nodes
+
         index.insert_nodes(nodes)
-        # Persist to disk
         index.storage_context.persist(persist_dir=str(store_path))
-        
-        # Update in-memory representation
         vs_info["index"] = index
 
-        # Add document metadata
         doc_id = str(uuid.uuid4())
         doc_info = {
             "id": doc_id,
-            "name": document.document_name,
-            "type": document.document_type
+            "name": file.filename,
+            "type": suffix.lstrip("."),
+            "uploaded_at": datetime.utcnow().isoformat()
         }
         vs_info["documents"].append(doc_info)
-        
-        # Save updated metadata
         save_store_metadata(store_id, vs_info)
 
-        return {"document_id": doc_id, "store_id": store_id, "status": "added"}
+        return {
+            "status": "success",
+            "store_id": store_id,
+            "document_id": doc_id,
+            "filename": file.filename,
+            "message": "Document added and indexed"
+        }
 
     except Exception as e:
-        logger.exception(f"Error adding document: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.exception(f"Error adding document to vector store {store_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process and embed the document")
+
     finally:
-        # Clean up temp file
         if temp_path:
             try:
                 temp_path.unlink(missing_ok=True)
             except Exception as e:
-                logger.error(f"Error cleaning up temp file: {e}")
+                logger.warning(f"Failed to clean up temp file: {e}")
 
 
 @router.get("/", summary="List all vector stores")

@@ -10,6 +10,8 @@ def build_llm_instance(provider: str, model: str, api_key: str, temperature: Opt
     return openai.LLM(model=model, api_key=api_key,temperature=temperature)
 
 def build_stt_instance(provider: str, model: str, language: str, api_key: str):
+    if provider == "openai":
+        return openai.STT(model=model, language=language, api_key=api_key)
     if provider == "deepgram":
         return deepgram.STT(model=model, language=language, api_key=api_key)
     return deepgram.STT(model="nova-3", language="en", api_key=api_key)

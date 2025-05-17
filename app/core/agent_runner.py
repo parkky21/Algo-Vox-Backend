@@ -152,7 +152,6 @@ async def entrypoint(ctx: JobContext):
         metadata = json.loads(ctx.job.metadata)
         agent_id = metadata["agent_id"]
 
-        # 🔁 Load config from MongoDB
         mongo_client = MongoDBClient()
         flow = mongo_client.get_flow_by_id(agent_id)
 
@@ -160,7 +159,6 @@ async def entrypoint(ctx: JobContext):
             logger.error(f"Agent config not found in MongoDB for ID: {agent_id}")
             return
 
-        # 🔧 Patch TTS private_key if needed
         api_key = flow.get("global_settings", {}).get("tts", {}).get("api_key")
         if isinstance(api_key, dict):
             private_key = api_key.get("private_key")
@@ -176,7 +174,6 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"Starting session in room: {ctx.room.name} with agent ID: {agent_id}")
         await ctx.connect()
 
-        # 🔧 Build components
         llm = build_llm_instance(
             agent_config.global_settings.llm.provider,
             agent_config.global_settings.llm.model,
@@ -215,7 +212,6 @@ async def entrypoint(ctx: JobContext):
 
         ctx.add_shutdown_callback(write_transcript)
 
-        # 🌟 Launch the first node
         entry_node = agent_config.entry_node
         if not entry_node:
             logger.error("No entry node found in agent config")
