@@ -62,7 +62,7 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
         raise HTTPException(status_code=500, detail=f"Failed to start agent: {str(e)}")
 
 
-@router.post("/disconnect/{agent_id}")
+@router.post("/stop-agent/{agent_id}")
 async def disconnect_agent(agent_id: str):
     agent_info = agent_sessions.get(agent_id)
 
