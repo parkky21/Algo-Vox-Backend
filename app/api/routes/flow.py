@@ -8,6 +8,8 @@ import asyncio
 from datetime import datetime
 from livekit.api import LiveKitAPI, DeleteRoomRequest
 from app.core.settings import settings
+from app.core.models import AgentConfig
+from app.utils.vector_store_utils import vector_stores
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -17,14 +19,29 @@ mongo_client = MongoDBClient()
 
 agent_sessions = {}
 
+from pydantic import ValidationError
+
 @router.post("/start-agent/{agent_id}")
 async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTasks):
     flow = mongo_client.get_flow_by_id(agent_id)
 
     if not flow:
-        raise HTTPException(status_code=404, detail="Agent config not found in MongoDB")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Agent configuration with ID '{agent_id}' not found in MongoDB"
+        )
 
     try:
+        agent_config = AgentConfig(**flow)
+
+        vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
+        if vector_store_id and vector_store_id not in vector_stores:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vector store ID '{vector_store_id}' is not loaded in memory. "
+                       f"Please ensure it's created and loaded before running the agent."
+            )
+
         room_name = f"room-{uuid.uuid4().hex[:6]}"
         agent_name = f"agent-{uuid.uuid4().hex[:6]}"
         identity = f"user-{uuid.uuid4().hex[:6]}"
@@ -48,11 +65,23 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
             "ws_token": ws_token,
             "agent_name": agent_name,
             "room_name": room_name,
-            "message": "Agent started successfully from MongoDB config"
+            "message": "Agent successfully launched from MongoDB configuration"
         }
 
+    except ValidationError as ve:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid agent configuration: {ve.errors()}"
+        )
+    except HTTPException:
+        raise  # re-raise any manually raised HTTPExceptions (e.g., for vector_store_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start agent: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error while starting agent '{agent_id}': {str(e)}"
+        )
 
 
 @router.post("/stop-agent/{agent_id}")

@@ -59,10 +59,7 @@ class GenericAgent(Agent):
         )
 
     async def on_enter(self):
-        start = time.perf_counter()
         await self.session.generate_reply()
-        logger.info(f"[LATENCY] generate_reply() took {time.perf_counter() - start:.3f} seconds")
-
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
     tools = []
@@ -225,8 +222,8 @@ async def agent_run(agent_name: str, agent_id: Optional[str] = None):
         logger.error("Agent ID is required")
         return
     
-    # def prewarm(proc:JobProcess):
-    #     proc.userdata["vad"] = silero.VAD.load()
+    def prewarm(proc:JobProcess):
+        proc.userdata["vad"] = silero.VAD.load()
 
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,
@@ -234,7 +231,7 @@ async def agent_run(agent_name: str, agent_id: Optional[str] = None):
         agent_name=agent_name,
         api_key=settings.LIVEKIT_API_KEY,
         api_secret=settings.LIVEKIT_API_SECRET,
-        # prewarm_fnc=prewarm,
+        prewarm_fnc=prewarm,
     )
 
     worker = Worker(opts=worker_options)
