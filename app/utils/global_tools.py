@@ -8,7 +8,6 @@ def build_global_tools(
     create_agent_fn: Callable  # Pass in the create_agent function
 ) -> List:
     tools = []
-
     for idx, node in enumerate(agent_config.nodes):
         if getattr(node, "global_node", False):
             tool_name = f"global_{idx + 1}"

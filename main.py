@@ -10,7 +10,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS Middleware (optional but recommended for frontend testing)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Change this to specific domains in production

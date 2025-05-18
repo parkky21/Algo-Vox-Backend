@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any, List, Union
 import logging
 import os
 from dotenv import load_dotenv
+from app.core.settings import Settings
 
 # Load env vars
 load_dotenv()
@@ -23,8 +24,8 @@ class MongoDBClient:
     def connect(self):
         """Establish MongoDB connection"""
         try:
-            mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-            db_name = os.getenv("MONGODB_NAME", "ai-agent")
+            mongo_uri = Settings.MONGODB_URI
+            db_name = Settings.MONGODB_NAME
             self.client = MongoClient(mongo_uri)
             self.db = self.client[db_name]
             logger.info(f"Connected to MongoDB at {mongo_uri}, DB: {db_name}")

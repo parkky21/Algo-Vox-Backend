@@ -4,12 +4,10 @@ from typing import Optional
 from datetime import datetime
 import json
 import os
-from livekit.agents import Worker
-from livekit.agents import JobContext, WorkerOptions,RunContext
+from livekit.agents import JobContext, WorkerOptions,RunContext,Worker
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import silero
-from app.core.config import get_agent_config 
 from app.core.models import AgentConfig
 from app.utils.end_call_tool import end_call
 from app.core.ws_manager import ws_manager
@@ -31,8 +29,18 @@ async def generate_function_tools(config, module, agent_id):
         def make_tool(next_node_val):
             @function_tool(name=tool_name, description=f"Use this tool if {tool_definition}")
             async def tool_fn(context: RunContext):
+                import time
+                start = time.perf_counter()
                 chat_ctx = context.session._chat_ctx
-                return await create_agent(next_node_val, chat_ctx=chat_ctx, agent_config=context.session._agent_config, agent_id=agent_id)
+                agent=await create_agent(
+                    next_node_val,
+                    chat_ctx=chat_ctx,
+                    agent_config=context.session._agent_config,
+                    agent_id=agent_id
+                )
+                end = time.perf_counter()
+                logger.info(f"Time taken to create agent: {end - start} seconds")
+                return agent
             return tool_fn
 
         setattr(module, tool_name, make_tool(next_node))
@@ -63,8 +71,10 @@ class GenericAgent(Agent):
         )
 
     async def on_enter(self):
+        import time
+        start = time.perf_counter()
         await self.session.generate_reply()
-
+        logger.info(f"[LATENCY] generate_reply() took {time.perf_counter() - start:.3f} seconds")
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
     tools = []
