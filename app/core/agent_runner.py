@@ -187,7 +187,7 @@ async def entrypoint(ctx: JobContext):
             credentials_info=agent_config.global_settings.tts.api_key
         )
 
-        session = AgentSession(stt=stt, llm=llm, tts=tts, vad=silero.VAD.load())
+        session = AgentSession(stt=stt, llm=llm, tts=tts, vad=ctx.proc.userdata["vad"])
         session._agent_config = agent_config
 
         async def write_transcript():
