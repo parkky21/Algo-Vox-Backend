@@ -9,7 +9,7 @@ logger = logging.getLogger("end-call")
 @function_tool()
 async def end_call(context: RunContext) -> dict:
     """
-    Use this tool if the customer doesn't have any query to end the call.
+    Only Use this tool for ending the call.
     """
     try:
         # await context.session.generate_reply(instructions="Thank the user for their time")

@@ -4,7 +4,8 @@ from typing import Optional
 from datetime import datetime
 import json
 import os
-from livekit.agents import JobContext, WorkerOptions,RunContext,Worker
+import time
+from livekit.agents import JobContext, WorkerOptions,RunContext,Worker,JobProcess
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import silero
@@ -29,7 +30,6 @@ async def generate_function_tools(config, module, agent_id):
         def make_tool(next_node_val):
             @function_tool(name=tool_name, description=f"Use this tool if {tool_definition}")
             async def tool_fn(context: RunContext):
-                import time
                 start = time.perf_counter()
                 chat_ctx = context.session._chat_ctx
                 agent=await create_agent(
@@ -48,33 +48,21 @@ async def generate_function_tools(config, module, agent_id):
 class GenericAgent(Agent):
     def __init__(self, prompt: str, tools: Optional[list] = None, chat_ctx=None, agent_config=None, node_config=None):
         global_prompt = agent_config.global_settings.global_prompt if agent_config.global_settings else ""
-        llm_config = agent_config.global_settings.llm if agent_config.global_settings else None
-        tts_config = agent_config.global_settings.tts if agent_config.global_settings else None
-
-        llm_instance = build_llm_instance(llm_config.provider, llm_config.model, llm_config.api_key,agent_config.global_settings.temperature)
-        tts_instance = build_tts_instance(
-            tts_config.provider,
-            tts_config.model,
-            tts_config.language,
-            credentials_info=tts_config.api_key,
-        )
 
         self._agent_config = agent_config
         self._node_config = node_config
 
         super().__init__(
             instructions=f"{global_prompt}\n{prompt}",
-            llm=llm_instance,
-            tts=tts_instance,
             tools=tools or [],
             chat_ctx=chat_ctx
         )
 
     async def on_enter(self):
-        import time
         start = time.perf_counter()
         await self.session.generate_reply()
         logger.info(f"[LATENCY] generate_reply() took {time.perf_counter() - start:.3f} seconds")
+
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
     tools = []
@@ -127,7 +115,6 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         )
 
     elif node_type == "function":
-        # Expecting a callable named `node_config.function_name` in your code
         prompt = node_config.prompt or node_config.static_sentence or ""
         tools.append(place_order)
 
@@ -237,8 +224,9 @@ async def agent_run(agent_name: str, agent_id: Optional[str] = None):
     if not agent_id:
         logger.error("Agent ID is required")
         return
-    if "\\x3a" in settings.LIVEKIT_URL:
-        settings.LIVEKIT_URL = settings.LIVEKIT_URL.replace("\\x3a", ":")
+    
+    # def prewarm(proc:JobProcess):
+    #     proc.userdata["vad"] = silero.VAD.load()
 
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,
@@ -246,6 +234,7 @@ async def agent_run(agent_name: str, agent_id: Optional[str] = None):
         agent_name=agent_name,
         api_key=settings.LIVEKIT_API_KEY,
         api_secret=settings.LIVEKIT_API_SECRET,
+        # prewarm_fnc=prewarm,
     )
 
     worker = Worker(opts=worker_options)
