@@ -17,6 +17,7 @@ from app.utils.agent_builder import build_llm_instance, build_stt_instance, buil
 from app.utils.helper import place_order,list_orders
 from app.utils.query_tool import build_query_tool
 from app.utils.mongodb_client import MongoDBClient
+from app.utils.configure_nodes import parse_agent_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -159,7 +160,7 @@ async def entrypoint(ctx: JobContext):
             if private_key and "\\n" in private_key:
                 api_key["private_key"] = private_key.replace("\\n", "\n")
 
-        agent_config = AgentConfig(**flow)
+        agent_config = parse_agent_config(flow)
 
         if not agent_config.nodes or not agent_config.global_settings:
             logger.error(f"Incomplete agent config for flow execution: {agent_id}")

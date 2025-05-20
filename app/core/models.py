@@ -2,14 +2,14 @@
 from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel
 
-class ModelParameter(BaseModel):
-    key: str
-    value: str
+# class ModelParameter(BaseModel):
+#     key: str
+#     value: str
 
-class ModelConfig(BaseModel):
-    provider: str
-    model_name: str
-    additionalParameters: List[ModelParameter] = []
+# class ModelConfig(BaseModel):
+#     provider: str
+#     model_name: str
+#     additionalParameters: List[ModelParameter] = []
 
 class ConnectAgentRequest(BaseModel):
     agent_id: str
@@ -24,20 +24,20 @@ class VectorStoreConfig(BaseModel):
     api_key: Optional[str] = None
     store_id: Optional[str] = None
 
-class DocumentUpload(BaseModel):
-    store_id: str
-    document_name: str
-    document_content: str
-    document_type: str = "text"
+# class DocumentUpload(BaseModel):
+#     store_id: str
+#     document_name: str
+#     document_content: str
+#     document_type: str = "text"
 
 class NodeRoute(BaseModel):
     tool_name: str
     next_node: str
-    condition: Optional[str] = None
+    condition: str
 
 class NodeConfig(BaseModel):
     node_id: str
-    node_name: str
+    label: Optional[str] = None
     type: str
     speak_order: Optional[str] = None
     pause_before_speaking: Optional[int] = None
@@ -95,9 +95,7 @@ class GlobalSettings(BaseModel):
     call_settings: Optional[CallSettings] = None
 
 class AgentConfig(BaseModel):
-    # For Flow configs
     entry_node: Optional[str] = None
-     # For both Lite and Flow configs
     global_settings: Optional[GlobalSettings] = None
     nodes: Optional[List[NodeConfig]] = None
 

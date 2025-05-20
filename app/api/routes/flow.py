@@ -10,6 +10,7 @@ from livekit.api import LiveKitAPI, DeleteRoomRequest
 from app.core.settings import settings
 from app.core.models import AgentConfig
 from app.utils.vector_store_utils import vector_stores
+from app.utils.configure_nodes import parse_agent_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -32,7 +33,8 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
         )
 
     try:
-        agent_config = AgentConfig(**flow)
+        agent_config = parse_agent_config(flow)
+        print(agent_config)
 
         vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
         if vector_store_id and vector_store_id not in vector_stores:
