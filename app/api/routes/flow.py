@@ -34,7 +34,6 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
 
     try:
         agent_config = parse_agent_config(flow)
-        print(agent_config)
 
         vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
         if vector_store_id and vector_store_id not in vector_stores:

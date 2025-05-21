@@ -44,7 +44,8 @@ async def generate_function_tools(config, module, agent_id):
                 return agent
             return tool_fn
 
-        setattr(module, tool_name, make_tool(next_node))
+        if not hasattr(module, tool_name):
+            setattr(module, tool_name, make_tool(next_node))
 
 class GenericAgent(Agent):
     def __init__(self, prompt: str, tools: Optional[list] = None, chat_ctx=None, agent_config=None, node_config=None):
@@ -66,11 +67,8 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
     tools = []
 
     if getattr(agent_config.global_settings, "vector_store_id", None):
-        logger.info(f"Loading vector store tool for agent ID: {agent_id}")
-
         try:
             query_tool = build_query_tool(agent_config.global_settings.vector_store_id)
-            logger.info(f"Vector store tool loaded: {agent_config.global_settings.vector_store_id}")
             tools.append(query_tool)
         except Exception as e:
             logger.error(f"Failed to load vector store tool: {e}")
