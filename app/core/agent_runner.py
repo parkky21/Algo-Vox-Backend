@@ -9,12 +9,10 @@ from livekit.agents import JobContext, WorkerOptions,RunContext,Worker,JobProces
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import silero
-from app.core.models import AgentConfig
 from app.utils.end_call_tool import end_call
 from app.core.ws_manager import ws_manager
 from app.core.settings import settings
 from app.utils.agent_builder import build_llm_instance, build_stt_instance, build_tts_instance
-from app.utils.helper import place_order,list_orders
 from app.utils.query_tool import build_query_tool
 from app.utils.mongodb_client import MongoDBClient
 from app.utils.configure_nodes import parse_agent_config
@@ -96,10 +94,7 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
 
     if agent_id:
         await ws_manager.send_node_update(agent_id, node_id)
-
-        all_bookings = list_orders()
         logger.info(f"Node switched to: {node_id}")
-        logger.debug(f"Orders: {all_bookings}")
 
     if node_type == "conversation":
         return GenericAgent(
@@ -111,8 +106,31 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         )
 
     elif node_type == "function":
-        prompt = node_config.prompt or node_config.static_sentence or ""
-        tools.append(place_order)
+        tool_data = node_config.custom_function
+        local_vars = {}
+        import codecs
+
+        try:
+            code_str = codecs.decode(tool_data["function_code"], "unicode_escape")  # 🔥 FIX here
+            print("Function code string to exec:\n", code_str)
+
+            exec(code_str, globals(), local_vars)
+            fn_ref = local_vars.get("tool_fn")
+            logger.info(f"Compiling custom tool for node {node_config.node_id}: {tool_data['tool_name']}")
+            
+            if fn_ref:
+                wrapped_tool = function_tool(
+                    fn_ref,
+                    name=tool_data["tool_name"],
+                    description=tool_data["tool_description"]
+                )
+                tools.append(wrapped_tool)
+                logger.info(f"Custom tool '{tool_data['tool_name']}' compiled successfully for node {node_config.node_id}")
+            else:
+                raise ValueError("No 'tool_fn' defined in function_code")
+
+        except Exception as e:
+            logger.error(f"Failed to compile custom tool for node {node_config.node_id}: {e}")
 
         return GenericAgent(
             prompt=prompt,

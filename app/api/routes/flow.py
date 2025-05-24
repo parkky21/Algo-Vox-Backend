@@ -8,10 +8,9 @@ import asyncio
 from datetime import datetime
 from livekit.api import LiveKitAPI, DeleteRoomRequest
 from app.core.settings import settings
-from app.core.models import AgentConfig
 from app.utils.vector_store_utils import vector_stores
 from app.utils.configure_nodes import parse_agent_config
-
+from app.utils.helper import validate_custom_function
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
 
@@ -34,6 +33,10 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
 
     try:
         agent_config = parse_agent_config(flow)
+        
+        for node in agent_config.nodes or []:
+            if node.type == "function" and node.custom_function:
+                validate_custom_function(node.custom_function.get("function_code", ""))
 
         vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
         if vector_store_id and vector_store_id not in vector_stores:

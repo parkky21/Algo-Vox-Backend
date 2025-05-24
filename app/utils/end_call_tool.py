@@ -9,7 +9,7 @@ logger = logging.getLogger("end-call")
 @function_tool()
 async def end_call(context: RunContext) -> dict:
     """
-    Only Use this tool to if you want to end the call.
+    Used to end call.
     """
     try:
         # await context.session.generate_reply(instructions="Thank the user for their time")

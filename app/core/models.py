@@ -2,15 +2,6 @@
 from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel
 
-# class ModelParameter(BaseModel):
-#     key: str
-#     value: str
-
-# class ModelConfig(BaseModel):
-#     provider: str
-#     model_name: str
-#     additionalParameters: List[ModelParameter] = []
-
 class ConnectAgentRequest(BaseModel):
     agent_id: str
     room_name:Optional [str]=None
@@ -23,12 +14,6 @@ class VectorStoreConfig(BaseModel):
     model_name: Optional[str] = None
     api_key: Optional[str] = None
     store_id: Optional[str] = None
-
-# class DocumentUpload(BaseModel):
-#     store_id: str
-#     document_name: str
-#     document_content: str
-#     document_type: str = "text"
 
 class NodeRoute(BaseModel):
     tool_name: str
@@ -47,6 +32,7 @@ class NodeConfig(BaseModel):
     global_node: Optional[bool] = False
     block_interruption: Optional[bool] = False
     routes: Optional[List[NodeRoute]] = None
+    custom_function: Optional[Dict[str, str]] = None
 
 class SpeechSettings(BaseModel):
     background_sound: Optional[str] = None
