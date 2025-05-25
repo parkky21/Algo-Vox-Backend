@@ -1,7 +1,6 @@
 from app.core.models import AgentConfig, NodeConfig, NodeRoute, GlobalSettings
 from pydantic import ValidationError
 
-
 def parse_agent_config(raw_json: dict) -> AgentConfig:
     """
     Converts UI JSON (with 'nodes', 'edges', etc.) to AgentConfig model.

@@ -1,8 +1,8 @@
 from typing import Optional
 import logging
 from livekit.agents import Worker, WorkerOptions, JobProcess
-from app.core.settings import settings
-from app.core.configure_agent import entrypoint
+from app.core.config import settings
+from app.core.entrypoints import entrypoint 
 from livekit.plugins import silero
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")

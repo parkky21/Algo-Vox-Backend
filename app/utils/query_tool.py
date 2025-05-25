@@ -6,7 +6,6 @@ from app.utils.vector_store_utils import vector_stores
 import logging
 from llama_index.llms.openai import OpenAI
 
-
 logger = logging.getLogger(__name__)
 
 def build_query_tool(store_id: str):

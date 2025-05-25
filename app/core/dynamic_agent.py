@@ -1,19 +1,13 @@
 import logging
 import sys
 from typing import Optional
-import json
 import time
-from livekit.agents import JobContext,RunContext
+from livekit.agents import RunContext
 from livekit.agents.llm import function_tool
-from livekit.agents.voice import Agent, AgentSession
-from app.utils.end_call_tool import end_call
+from livekit.agents.voice import Agent
+from app.utils.call_control_tools import end_call ,detected_answering_machine
 from app.core.ws_manager import ws_manager
-from livekit.plugins import silero
-from app.utils.agent_builder import build_llm_instance, build_stt_instance, build_tts_instance
 from app.utils.query_tool import build_query_tool
-from app.utils.mongodb_client import MongoDBClient
-from app.utils.configure_nodes import parse_agent_config
-from app.utils.transcript_fnc import write_transcript_file
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -89,6 +83,7 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
 
     # if getattr(node_config, "is_exit_node", False):
     tools.append(end_call)
+    tools.append(detected_answering_machine)
 
     if agent_id:
         await ws_manager.send_node_update(agent_id, node_id)
@@ -109,21 +104,21 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         import codecs
 
         try:
-            code_str = codecs.decode(tool_data["function_code"], "unicode_escape")  # 🔥 FIX here
+            code_str = codecs.decode(tool_data["fnc_code"], "unicode_escape")  # 🔥 FIX here
             print("Function code string to exec:\n", code_str)
 
             exec(code_str, globals(), local_vars)
             fn_ref = local_vars.get("tool_fn")
-            logger.info(f"Compiling custom tool for node {node_config.node_id}: {tool_data['tool_name']}")
+            logger.info(f"Compiling custom tool for node {node_config.node_id}: {tool_data['fnc_name']}")
             
             if fn_ref:
                 wrapped_tool = function_tool(
                     fn_ref,
-                    name=tool_data["tool_name"],
-                    description=tool_data["tool_description"]
+                    name=tool_data["fnc_name"],
+                    description=tool_data["fnc_description"]
                 )
                 tools.append(wrapped_tool)
-                logger.info(f"Custom tool '{tool_data['tool_name']}' compiled successfully for node {node_config.node_id}")
+                logger.info(f"Custom tool '{tool_data['fnc_name']}' compiled successfully for node {node_config.node_id}")
             else:
                 raise ValueError("No 'tool_fn' defined in function_code")
 
@@ -155,72 +150,4 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
 
     else:
         raise ValueError(f"Unknown node type: {node_type}")
-
-async def entrypoint(ctx: JobContext):
-    try:
-        metadata = json.loads(ctx.job.metadata)
-        agent_id = metadata["agent_id"]
-
-        mongo_client = MongoDBClient()
-        flow = mongo_client.get_flow_by_id(agent_id)
-
-        if not flow:
-            logger.error(f"Agent config not found in MongoDB for ID: {agent_id}")
-            return
-
-        api_key = flow.get("global_settings", {}).get("tts", {}).get("api_key")
-        if isinstance(api_key, dict):
-            private_key = api_key.get("private_key")
-            if private_key and "\\n" in private_key:
-                api_key["private_key"] = private_key.replace("\\n", "\n")
-
-        agent_config = parse_agent_config(flow)
-
-        if not agent_config.nodes or not agent_config.global_settings:
-            logger.error(f"Incomplete agent config for flow execution: {agent_id}")
-            return
-
-        logger.info(f"Starting session in room: {ctx.room.name} with agent ID: {agent_id}")
-        await ctx.connect()
-
-        llm = build_llm_instance(
-            agent_config.global_settings.llm.provider,
-            agent_config.global_settings.llm.model,
-            agent_config.global_settings.llm.api_key,
-            agent_config.global_settings.temperature
-        )
-        stt = build_stt_instance(
-            agent_config.global_settings.stt.provider,
-            agent_config.global_settings.stt.model,
-            agent_config.global_settings.stt.language,
-            agent_config.global_settings.stt.api_key
-        )
-        tts = build_tts_instance(
-            agent_config.global_settings.tts.provider,
-            agent_config.global_settings.tts.model,
-            agent_config.global_settings.tts.language,
-            credentials_info=agent_config.global_settings.tts.api_key
-        )
-
-        session = AgentSession(
-            stt=stt, 
-            llm=llm, 
-            tts=tts, 
-            # vad=ctx.proc.userdata["vad"]
-            vad=silero.VAD.load()
-            )
-        session._agent_config = agent_config
-
-        ctx.add_shutdown_callback(lambda:write_transcript_file(session, ctx.room.name))
-
-        entry_node = agent_config.entry_node
-        if not entry_node:
-            logger.error("No entry node found in agent config")
-            return
-
-        agent = await create_agent(entry_node, agent_config=agent_config, agent_id=agent_id)
-        await session.start(agent=agent, room=ctx.room)
-
-    except Exception as e:
-        logger.exception(f"Unexpected error in entrypoint: {e}")
 

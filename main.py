@@ -1,9 +1,10 @@
 from fastapi import FastAPI,Depends, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import vector_stores,flow
-from app.api.routes.ws_routes import agent_ws
+from app.api.routes import agents, vector_stores
+from app.api.routes.websockets import agent_ws
 from app.api.dependencies import validate_ws_token
 from app.utils.mongodb_client import MongoDBClient
+from app.api.routes import telephony
 
 app = FastAPI(
     title="Algo Vox API",
@@ -30,8 +31,9 @@ async def protected_agent_ws(
 
 
 app.include_router(vector_stores.router, prefix="/vector_stores", tags=["Vector Stores"])
-app.include_router(flow.router, prefix="/v1", tags=["Agent"])
+app.include_router(agents.router, prefix="/v1", tags=["Agent"])
 app.add_api_websocket_route("/ws/agent/{agent_id}", protected_agent_ws)
+app.include_router(telephony.router, prefix="/telephony", tags=["Telephony"])
 
 if __name__ == "__main__":
     import uvicorn

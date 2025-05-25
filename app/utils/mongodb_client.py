@@ -2,9 +2,8 @@ from pymongo import MongoClient
 from bson import ObjectId
 from typing import Optional, Dict, Any, List, Union
 import logging
-import os
 from dotenv import load_dotenv
-from app.core.settings import Settings
+from app.core.config import Settings
 
 # Load env vars
 load_dotenv()

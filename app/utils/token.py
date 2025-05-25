@@ -1,7 +1,7 @@
 # server.py
 import datetime
 from livekit import api
-from app.core.settings import settings
+from app.core.config import settings
 import time
 import jwt
 
