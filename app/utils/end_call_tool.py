@@ -1,23 +1,26 @@
-from livekit.agents import function_tool, RunContext
+from livekit.agents import function_tool, RunContext, get_job_context
 from livekit.api import DeleteRoomRequest
-from livekit.agents import get_job_context
 import logging
 import aiohttp
 
 logger = logging.getLogger("end-call")
 
 @function_tool()
-async def end_call(context: RunContext) -> dict:
+async def end_call(ctx: RunContext) -> dict:
     """
-    Used to end call.
+    Gracefully ends the call: waits for speech to finish, then deletes the room.
     """
     try:
-        # await context.session.generate_reply(instructions="Thank the user for their time")
+        # Wait for current speech to finish
+        current_speech = ctx.session.current_speech
+        if current_speech:
+            await current_speech.wait_for_playout()
+
+        # Get the job context and delete the room
         job_ctx = get_job_context()
-
         room_name = job_ctx.room.name
-        logger.info(f"Attempting to delete room: {room_name}")
 
+        logger.info(f"Attempting to delete room: {room_name}")
         await job_ctx.api.room.delete_room(DeleteRoomRequest(room=room_name))
         logger.info(f"Room '{room_name}' deleted successfully.")
 

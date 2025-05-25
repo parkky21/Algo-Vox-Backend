@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import vector_stores,flow
 from app.api.routes.ws_routes import agent_ws
 from app.api.dependencies import validate_ws_token
+from app.utils.mongodb_client import MongoDBClient
 
 app = FastAPI(
     title="Algo Vox API",

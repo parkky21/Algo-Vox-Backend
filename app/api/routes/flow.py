@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from app.utils.mongodb_client import MongoDBClient
-from app.core.agent_runner import agent_run
+from app.core.start_agent import agent_run
 from app.utils.token import get_token, generate_ws_token
 import uuid
 import logging
