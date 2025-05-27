@@ -20,6 +20,11 @@ class NodeRoute(BaseModel):
     next_node: str
     condition: str
 
+class CustomFunction(BaseModel):
+    name: str
+    description: str
+    code: str
+
 class NodeConfig(BaseModel):
     node_id: str
     label: Optional[str] = None
@@ -32,7 +37,7 @@ class NodeConfig(BaseModel):
     global_node: Optional[bool] = False
     block_interruption: Optional[bool] = False
     routes: Optional[List[NodeRoute]] = None
-    custom_function: Optional[Dict[str, str]] = None
+    custom_function: Optional[CustomFunction] = None
 
 class SpeechSettings(BaseModel):
     background_sound: Optional[str] = None
@@ -76,6 +81,7 @@ class GlobalSettings(BaseModel):
     llm: LLMConfig
     stt: STTConfig
     tts: TTSConfig
+    timeout_seconds: Optional[int] = None
     temperature: Optional[float] = 0.7
     speech_settings: Optional[SpeechSettings] = None
     call_settings: Optional[CallSettings] = None

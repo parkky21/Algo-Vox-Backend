@@ -2,17 +2,18 @@ import logging
 import sys
 from typing import Optional
 import time
+import asyncio
 from livekit.agents import RunContext
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent
-from app.utils.call_control_tools import end_call ,detected_answering_machine
+from app.utils.call_control_tools import end_call ,detected_answering_machine, hangup
 from app.core.ws_manager import ws_manager
 from app.utils.query_tool import build_query_tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
 
-async def generate_function_tools(config, module, agent_id):
+async def generate_function_tools(config, module, agent_id,agent_config):
     for route in config.get("routes", []):
         tool_name = route["tool_name"]
         next_node = route["next_node"]
@@ -23,10 +24,10 @@ async def generate_function_tools(config, module, agent_id):
             async def tool_fn(context: RunContext):
                 start = time.perf_counter()
                 chat_ctx = context.session._chat_ctx
-                agent=await create_agent(
+                agent = await create_agent(
                     next_node_val,
                     chat_ctx=chat_ctx,
-                    agent_config=context.session._agent_config,
+                    agent_config=agent_config,
                     agent_id=agent_id
                 )
                 end = time.perf_counter()
@@ -40,9 +41,10 @@ async def generate_function_tools(config, module, agent_id):
 class GenericAgent(Agent):
     def __init__(self, prompt: str, tools: Optional[list] = None, chat_ctx=None, agent_config=None, node_config=None):
         global_prompt = agent_config.global_settings.global_prompt if agent_config.global_settings else ""
-
+        
         self._agent_config = agent_config
         self._node_config = node_config
+        self._silence_task = None
 
         super().__init__(
             instructions=f"{global_prompt}\n{prompt}",
@@ -52,6 +54,59 @@ class GenericAgent(Agent):
 
     async def on_enter(self):
         await self.session.generate_reply()
+        silnc = self._agent_config.global_settings.timeout_seconds
+
+        if isinstance(silnc, (int, float)) and silnc > 0:
+            logger.info(f"Starting silence detection with timeout: {silnc} seconds")
+
+            # Cancel old task if any
+            if self._silence_task and not self._silence_task.done():
+                self._silence_task.cancel()
+                logger.info("Previous silence detection task cancelled")
+
+            self._silence_task = asyncio.create_task(self._detect_silence(timeout_seconds=silnc))
+
+    async def _detect_silence(self, timeout_seconds: int = 30):
+        last_listening_start = None
+        warning_given = False
+
+        try:
+            while True:
+                if getattr(self.session, "ended", False):
+                    logger.info("Session ended. Exiting silence detection loop.")
+                    break
+
+                current_state = self.session._agent_state
+
+                if current_state == "speaking":
+                    last_listening_start = None
+                    warning_given = False
+
+                elif current_state == "listening":
+                    if last_listening_start is None:
+                        last_listening_start = time.time()
+                    else:
+                        elapsed = time.time() - last_listening_start
+                        if elapsed > timeout_seconds:
+                            logger.info("Silence timeout reached. Ending call...")
+                            try:
+                                await self.session.generate_reply(instructions="The call has been idle for too long. Ending the call now.")
+                                await hangup()
+                            except Exception as e:
+                                logger.error(f"Failed during final hangup: {e}")
+                            break
+                        elif elapsed > timeout_seconds / 2 and not warning_given:
+                            warning_given = True
+                            logger.info("Giving silence warning prompt to user")
+                            await self.session.generate_reply(instructions="Ask the user whether they are still there?")
+                            await asyncio.sleep(5)
+                else:
+                    last_listening_start = None
+                    warning_given = False
+
+                await asyncio.sleep(2)
+        except asyncio.CancelledError:
+            logger.info("Silence detection task was cancelled")
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
     tools = []
@@ -73,17 +128,16 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
     if node_config.prompt:
         prompt = node_config.prompt
     elif node_config.static_sentence:
-        prompt =f"Say: {node_config.static_sentence}"
+        prompt = f"Say: {node_config.static_sentence}"
 
     if node_config.routes:
         module = sys.modules[__name__]
-        await generate_function_tools(node_config.dict(), module, agent_id)
+        await generate_function_tools(node_config.dict(), module, agent_id,agent_config)
         for route in node_config.routes:
             tools.append(getattr(module, route.tool_name))
 
-    # if getattr(node_config, "is_exit_node", False):
     tools.append(end_call)
-    tools.append(detected_answering_machine)
+    # tools.append(detected_answering_machine)
 
     if agent_id:
         await ws_manager.send_node_update(agent_id, node_id)
@@ -104,21 +158,21 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         import codecs
 
         try:
-            code_str = codecs.decode(tool_data["fnc_code"], "unicode_escape")  # 🔥 FIX here
+            code_str = codecs.decode(tool_data.code, "unicode_escape")
             print("Function code string to exec:\n", code_str)
 
             exec(code_str, globals(), local_vars)
             fn_ref = local_vars.get("tool_fn")
-            logger.info(f"Compiling custom tool for node {node_config.node_id}: {tool_data['fnc_name']}")
-            
+            logger.info(f"Compiling custom tool for node {node_config.node_id}: {tool_data.name}")
+
             if fn_ref:
                 wrapped_tool = function_tool(
                     fn_ref,
-                    name=tool_data["fnc_name"],
-                    description=tool_data["fnc_description"]
+                    name=tool_data.name,
+                    description=tool_data.description
                 )
                 tools.append(wrapped_tool)
-                logger.info(f"Custom tool '{tool_data['fnc_name']}' compiled successfully for node {node_config.node_id}")
+                logger.info(f"Custom tool '{tool_data.name}' compiled successfully for node {node_config.node_id}")
             else:
                 raise ValueError("No 'tool_fn' defined in function_code")
 
@@ -150,4 +204,3 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
 
     else:
         raise ValueError(f"Unknown node type: {node_type}")
-

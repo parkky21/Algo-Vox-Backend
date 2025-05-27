@@ -3,7 +3,8 @@ import json
 import logging
 from livekit import api
 from livekit.plugins import silero
-from livekit.agents import AgentSession, JobContext
+from livekit.agents import AgentSession, JobContext,BackgroundAudioPlayer, AudioConfig, BuiltinAudioClip
+
 from app.utils.agent_builder import build_llm_instance, build_stt_instance, build_tts_instance
 from app.utils.node_parser import parse_agent_config
 from app.utils.mongodb_client import MongoDBClient
@@ -90,6 +91,18 @@ async def entrypoint(ctx: JobContext):
                             # )
                 )
         )
+
+        background_audio = BackgroundAudioPlayer(
+      # play office ambience sound looping in the background
+            ambient_sound=AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.8),
+            # play keyboard typing sound when the agent is thinking
+            thinking_sound=[
+                    AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.8),
+                    AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.7),
+                ],
+            )
+
+        await background_audio.start(room=ctx.room, agent_session=session)
 
         # Telephony integration (conditional block)
         if "phone_number" in metadata:

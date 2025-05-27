@@ -36,7 +36,7 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
         
         for node in agent_config.nodes or []:
             if node.type == "function" and node.custom_function:
-                validate_custom_function(node.custom_function.get("fnc_code", ""))
+                validate_custom_function(node.custom_function.code)
 
         vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
         if vector_store_id and vector_store_id not in vector_stores:

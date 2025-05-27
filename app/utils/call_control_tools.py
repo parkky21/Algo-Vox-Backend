@@ -26,6 +26,9 @@ async def end_call(ctx: RunContext) -> dict:
     Called when the user wants to end the call.
     """
     try:
+        await ctx.session.generate_reply(
+            instructions="Thanks the user for their precious time.")
+        
         current_speech = ctx.session.current_speech
         if current_speech:
             await current_speech.wait_for_playout()
@@ -102,3 +105,13 @@ async def transfer_call(ctx: RunContext, participant: rtc.RemoteParticipant):
             instructions="there was an error transferring the call."
         )
         await hangup()
+
+
+@function_tool()
+async def set_volume(ctx:RunContext ,volume: int):
+    """Set the volume of the audio output.
+
+    Args:
+        volume (int): The volume level to set. Must be between 0 and 100.
+    """
+    ctx.volume = volume
