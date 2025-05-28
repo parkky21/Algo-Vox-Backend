@@ -25,7 +25,6 @@ async def entrypoint(ctx: JobContext):
 
         metadata = json.loads(ctx.job.metadata)
         agent_id = metadata["agent_id"]
-
         mongo_client = MongoDBClient()
 
         flow = mongo_client.get_flow_by_id(agent_id)
@@ -42,6 +41,7 @@ async def entrypoint(ctx: JobContext):
 
         agent_config = parse_agent_config(flow)
         logger.info(f"Loaded agent config for ID: {agent_config}")
+        
         if not agent_config.nodes or not agent_config.global_settings:
             logger.error(f"Incomplete agent config for ID: {agent_id}")
             return

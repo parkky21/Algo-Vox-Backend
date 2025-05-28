@@ -9,6 +9,8 @@ from livekit.agents.voice import Agent
 from app.utils.call_control_tools import end_call ,detected_answering_machine, hangup
 from app.core.ws_manager import ws_manager
 from app.utils.query_tool import build_query_tool
+from app.utils.node_parser import parse_agent_config
+from app.utils.mongodb_client import MongoDBClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent-runner")
@@ -24,6 +26,9 @@ async def generate_function_tools(config, module, agent_id,agent_config):
             async def tool_fn(context: RunContext):
                 start = time.perf_counter()
                 chat_ctx = context.session._chat_ctx
+                mongo_client = MongoDBClient()
+                flow = mongo_client.get_flow_by_id(agent_id)
+                agent_config = parse_agent_config(flow)
                 agent = await create_agent(
                     next_node_val,
                     chat_ctx=chat_ctx,
@@ -109,6 +114,11 @@ class GenericAgent(Agent):
             logger.info("Silence detection task was cancelled")
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
+    if agent_config is None and agent_id is not None:
+        logger.info(f"Fetching latest agent_config for agent_id: {agent_id}")
+        mongo_client = MongoDBClient()
+        flow = mongo_client.get_flow_by_id(agent_id)
+        agent_config = parse_agent_config(flow)
     tools = []
 
     if getattr(agent_config.global_settings, "vector_store_id", None):
