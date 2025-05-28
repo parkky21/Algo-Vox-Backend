@@ -7,9 +7,9 @@ from app.core.config import settings
 async def create_agent_dispatch(
     agent_id: str,
     phone_number: str,
-    agent_name: str = "outbound-caller",
+    agent_name: str,
+    room_name: str,
     metadata: Optional[Dict[str, Any]] = None,
-    room_name: str = "outbound",
 ) -> Optional[api.AgentDispatch]:
     """
     Create an agent dispatch for outbound calling.

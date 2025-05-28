@@ -12,7 +12,7 @@ from app.utils.vector_store_utils import vector_stores
 from app.utils.node_parser import parse_agent_config
 from app.utils.validators import validate_custom_function
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("agent-runner")
+logger = logging.getLogger("api")
 
 router = APIRouter()
 mongo_client = MongoDBClient()
@@ -20,9 +20,23 @@ mongo_client = MongoDBClient()
 agent_sessions = {}
 
 from pydantic import ValidationError
+from fastapi import Query
 
 @router.post("/start-agent/{agent_id}")
-async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTasks):
+async def start_agent_from_mongo(
+    agent_id: str,
+    background_tasks: BackgroundTasks,
+    force_refresh: bool = Query(True)
+):
+    if force_refresh and agent_id in agent_sessions:
+        logger.info(f"Force refresh enabled. Clearing previous session for agent_id: {agent_id}")
+        old_task = agent_sessions[agent_id]["task"]
+        if not old_task.done():
+            old_task.cancel()
+        del agent_sessions[agent_id]
+        logger.info(f"Force refresh: Cleared previous session for agent_id: {agent_id}")
+
+    # Always fetch fresh data
     flow = mongo_client.get_flow_by_id(agent_id)
 
     if not flow:
@@ -33,7 +47,7 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
 
     try:
         agent_config = parse_agent_config(flow)
-        
+
         for node in agent_config.nodes or []:
             if node.type == "function" and node.custom_function:
                 validate_custom_function(node.custom_function.code)
@@ -78,7 +92,7 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
             detail=f"Invalid agent configuration: {ve.errors()}"
         )
     except HTTPException:
-        raise  # re-raise any manually raised HTTPExceptions (e.g., for vector_store_id)
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
