@@ -20,7 +20,7 @@ async def generate_function_tools(config, module, agent_id,agent_config):
         tool_definition = route.get("condition", "")
 
         def make_tool(next_node_val):
-            @function_tool(name=tool_name, description=f"{tool_definition}")
+            @function_tool(name=tool_name, description=f"Use this tool {tool_definition}")
             async def tool_fn(context: RunContext):
                 start = time.perf_counter()
                 chat_ctx = context.session._chat_ctx
