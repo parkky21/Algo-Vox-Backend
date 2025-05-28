@@ -27,6 +27,7 @@ async def entrypoint(ctx: JobContext):
         agent_id = metadata["agent_id"]
 
         mongo_client = MongoDBClient()
+
         flow = mongo_client.get_flow_by_id(agent_id)
 
         if not flow:
@@ -97,12 +98,11 @@ async def entrypoint(ctx: JobContext):
     #         # play keyboard typing sound when the agent is thinking
     #         thinking_sound=[
     #                 AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.2),
-    #                 AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.3),
+    #                 AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.2),
     #             ],
     #         )
 
     #     await background_audio.start(room=ctx.room, agent_session=session)
-
 
         # Telephony integration (conditional block)
         if "phone_number" in metadata:     

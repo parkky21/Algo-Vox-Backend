@@ -30,9 +30,14 @@ async def start_agent_from_mongo(
 ):
     if force_refresh and agent_id in agent_sessions:
         logger.info(f"Force refresh enabled. Clearing previous session for agent_id: {agent_id}")
-        old_task = agent_sessions[agent_id]["task"]
-        if not old_task.done():
-            old_task.cancel()
+        old_task = agent_sessions[agent_id].get("task")
+
+        if old_task:
+            if not old_task.done():
+                old_task.cancel()
+        else:
+            logger.warning(f"No task found for agent {agent_id}, skipping cancellation.")
+
         del agent_sessions[agent_id]
         logger.info(f"Force refresh: Cleared previous session for agent_id: {agent_id}")
 
