@@ -47,6 +47,8 @@ async def start_agent_from_mongo(
 
     try:
         agent_config = parse_agent_config(flow)
+        g=agent_config.global_settings.global_prompt
+        logger.info(f"Global prompt for agent {agent_id}: {g}")
 
         for node in agent_config.nodes or []:
             if node.type == "function" and node.custom_function:
