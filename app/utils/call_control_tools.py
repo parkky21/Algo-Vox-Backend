@@ -26,8 +26,7 @@ async def end_call(ctx: RunContext) -> dict:
     Called when the user wants to end the call.
     """
     try:
-        await ctx.session.generate_reply(
-            instructions="Thanks the user for their precious time.")
+        await ctx.session.generate_reply(instructions="Thanks the user for their precious time.")
         
         current_speech = ctx.session.current_speech
         if current_speech:

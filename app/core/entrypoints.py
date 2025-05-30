@@ -11,7 +11,6 @@ from app.utils.transcript_fnc import write_transcript_file
 from app.core.dynamic_agent import create_agent
 from app.core.config import settings
 # from livekit.plugins.turn_detector.english import EnglishModel
-
 # from livekit.plugins import noise_cancellation
 # from livekit.agents import RoomInputOptions
 
@@ -26,25 +25,16 @@ async def entrypoint(ctx: JobContext):
         metadata = json.loads(ctx.job.metadata)
         agent_id = metadata["agent_id"]
         mongo_client = MongoDBClient()
-
         flow = mongo_client.get_flow_by_id(agent_id)
 
-        if not flow:
-            logger.error(f"Agent config not found for ID: {agent_id}")
-            return
-
-        api_key = flow.get("global_settings", {}).get("tts", {}).get("api_key")
-        if isinstance(api_key, dict):
-            private_key = api_key.get("private_key")
-            if private_key and "\\n" in private_key:
-                api_key["private_key"] = private_key.replace("\\n", "\n")
+        # api_key = flow.get("global_settings", {}).get("tts", {}).get("api_key")
+        # if isinstance(api_key, dict):
+        #     private_key = api_key.get("private_key")
+        #     if private_key and "\\n" in private_key:
+        #         api_key["private_key"] = private_key.replace("\\n", "\n")
 
         agent_config = parse_agent_config(flow)
-        logger.info(f"Loaded agent config for ID: {agent_config}")
         
-        if not agent_config.nodes or not agent_config.global_settings:
-            logger.error(f"Incomplete agent config for ID: {agent_id}")
-            return
 
         llm = build_llm_instance(
             agent_config.global_settings.llm.provider,
@@ -80,7 +70,6 @@ async def entrypoint(ctx: JobContext):
         if not entry_node:
             logger.error(f"No entry node defined in agent config for ID: {agent_id}")
             return
-
         agent = await create_agent(entry_node, agent_config=agent_config, agent_id=agent_id)
 
         # Start the session before dialing (if telephony)
@@ -93,17 +82,25 @@ async def entrypoint(ctx: JobContext):
                 )
         )
 
-    #     background_audio = BackgroundAudioPlayer(
-    #   # play office ambience sound looping in the background
-    #         ambient_sound=AudioConfig(BuiltinAudioClip.OFFICE_AMBIENCE, volume=0.8),
-    #         # play keyboard typing sound when the agent is thinking
-    #         thinking_sound=[
-    #                 AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.2),
-    #                 AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.2),
-    #             ],
-    #         )
+        bg_audio_cfg = agent_config.global_settings.background_audio
 
-    #     await background_audio.start(room=ctx.room, agent_session=session)
+        if bg_audio_cfg and bg_audio_cfg.enabled:
+            try:
+                background_audio = BackgroundAudioPlayer(
+                    ambient_sound=AudioConfig(
+                        BuiltinAudioClip.OFFICE_AMBIENCE,
+                        volume=bg_audio_cfg.ambient_volume
+                    ),
+                    thinking_sound=[
+                        AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=bg_audio_cfg.thinking_volume),
+                        AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=bg_audio_cfg.thinking_volume),
+                    ]
+                )
+
+                await background_audio.start(room=ctx.room, agent_session=session)
+                logger.info("Background audio started.")
+            except Exception as e:
+                logger.error(f"Error applying background audio config: {e}")
 
         # Telephony integration (conditional block)
         if "phone_number" in metadata:     

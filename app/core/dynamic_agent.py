@@ -9,30 +9,28 @@ from livekit.agents.voice import Agent
 from app.utils.call_control_tools import end_call ,detected_answering_machine, hangup
 from app.core.ws_manager import ws_manager
 from app.utils.query_tool import build_query_tool
-from app.utils.node_parser import parse_agent_config
-from app.utils.mongodb_client import MongoDBClient
+import copy
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("agent-runner")
+logger = logging.getLogger("DynamicAgent")
 
-async def generate_function_tools(config, module, agent_id,agent_config):
+async def generate_function_tools(config, module, agent_id, agent_config):
     for route in config.get("routes", []):
         tool_name = route["tool_name"]
         next_node = route["next_node"]
         tool_definition = route.get("condition", "")
 
-        def make_tool(next_node_val):
+        frozen_config = copy.deepcopy(agent_config)
+
+        def make_tool(next_node_val, frozen_agent_config):
             @function_tool(name=tool_name, description=f"Use this tool {tool_definition}")
             async def tool_fn(context: RunContext):
                 start = time.perf_counter()
                 chat_ctx = context.session._chat_ctx
-                mongo_client = MongoDBClient()
-                flow = mongo_client.get_flow_by_id(agent_id)
-                agent_config = parse_agent_config(flow)
                 agent = await create_agent(
                     next_node_val,
                     chat_ctx=chat_ctx,
-                    agent_config=agent_config,
+                    agent_config=frozen_agent_config,
                     agent_id=agent_id
                 )
                 end = time.perf_counter()
@@ -40,13 +38,15 @@ async def generate_function_tools(config, module, agent_id,agent_config):
                 return agent
             return tool_fn
 
-        if not hasattr(module, tool_name):
-            setattr(module, tool_name, make_tool(next_node))
+        if hasattr(module, tool_name):
+            delattr(module, tool_name)
+
+        setattr(module, tool_name, make_tool(next_node, frozen_config))
 
 class GenericAgent(Agent):
     def __init__(self, prompt: str, tools: Optional[list] = None, chat_ctx=None, agent_config=None, node_config=None):
         global_prompt = agent_config.global_settings.global_prompt if agent_config.global_settings else ""
-        
+
         self._agent_config = agent_config
         self._node_config = node_config
         self._silence_task = None
@@ -64,7 +64,6 @@ class GenericAgent(Agent):
         if isinstance(silnc, (int, float)) and silnc > 0:
             logger.info(f"Starting silence detection with timeout: {silnc} seconds")
 
-            # Cancel old task if any
             if self._silence_task and not self._silence_task.done():
                 self._silence_task.cancel()
                 logger.info("Previous silence detection task cancelled")
@@ -95,7 +94,10 @@ class GenericAgent(Agent):
                         if elapsed > timeout_seconds:
                             logger.info("Silence timeout reached. Ending call...")
                             try:
-                                await self.session.generate_reply(instructions="The call has been idle for too long. Ending the call now.")
+                                await self.session.say(
+                                    "It seems we've lost connection or you're unavailable. Ending the call now. Take care.",
+                                    allow_interruptions=False
+                                    )
                                 await hangup()
                             except Exception as e:
                                 logger.error(f"Failed during final hangup: {e}")
@@ -103,7 +105,9 @@ class GenericAgent(Agent):
                         elif elapsed > timeout_seconds / 2 and not warning_given:
                             warning_given = True
                             logger.info("Giving silence warning prompt to user")
-                            await self.session.generate_reply(instructions="Ask the user whether they are still there?")
+                            await self.session.say(
+                                "Hello? I'm still here. Please respond in the next few seconds or I’ll have to end the call."
+                                )
                             await asyncio.sleep(5)
                 else:
                     last_listening_start = None
@@ -114,14 +118,8 @@ class GenericAgent(Agent):
             logger.info("Silence detection task was cancelled")
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
-    if agent_config is None and agent_id is not None:
-        logger.info(f"Fetching latest agent_config for agent_id: {agent_id}")
-        mongo_client = MongoDBClient()
-        flow = mongo_client.get_flow_by_id(agent_id)
-        agent_config = parse_agent_config(flow)
     tools = []
-
-    if getattr(agent_config.global_settings, "vector_store_id", None):
+    if agent_config.global_settings and agent_config.global_settings.vector_store_id:
         try:
             query_tool = build_query_tool(agent_config.global_settings.vector_store_id)
             tools.append(query_tool)
@@ -139,15 +137,22 @@ async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=
         prompt = node_config.prompt
     elif node_config.static_sentence:
         prompt = f"Say: {node_config.static_sentence}"
+    else:
+        prompt = ""
 
     if node_config.routes:
         module = sys.modules[__name__]
-        await generate_function_tools(node_config.dict(), module, agent_id,agent_config)
+        await generate_function_tools(node_config.dict(), module, agent_id, agent_config)
         for route in node_config.routes:
             tools.append(getattr(module, route.tool_name))
 
-    tools.append(end_call)
-    # tools.append(detected_answering_machine)
+    if node_config.is_end_node:
+        tools.append(end_call)
+        logger.info(f"Added end_call tool to node {node_id}")
+
+    if node_config.detected_answering_machine:
+        tools.append(detected_answering_machine)
+        logger.info(f"Added detected_answering_machine tool to node {node_id}")
 
     if agent_id:
         await ws_manager.send_node_update(agent_id, node_id)

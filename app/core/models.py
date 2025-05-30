@@ -38,6 +38,8 @@ class NodeConfig(BaseModel):
     block_interruption: Optional[bool] = False
     routes: Optional[List[NodeRoute]] = None
     custom_function: Optional[CustomFunction] = None
+    is_end_node : Optional[bool] = False
+    detected_answering_machine: Optional[bool] = False
 
 class SpeechSettings(BaseModel):
     background_sound: Optional[str] = None
@@ -75,6 +77,11 @@ class TTSConfig(BaseModel):
     language: str
     api_key: Union[str, dict]
 
+class BackgroundAudioConfig(BaseModel):
+    enabled: bool = False
+    ambient_volume: float = 0.8
+    thinking_volume: float = 0.2
+
 class GlobalSettings(BaseModel):
     vector_store_id: Optional[str] = None 
     global_prompt: str
@@ -85,6 +92,7 @@ class GlobalSettings(BaseModel):
     temperature: Optional[float] = 0.7
     speech_settings: Optional[SpeechSettings] = None
     call_settings: Optional[CallSettings] = None
+    background_audio : Optional[BackgroundAudioConfig] = None
 
 class AgentConfig(BaseModel):
     entry_node: Optional[str] = None
