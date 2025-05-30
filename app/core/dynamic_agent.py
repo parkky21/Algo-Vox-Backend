@@ -106,7 +106,7 @@ class GenericAgent(Agent):
                             warning_given = True
                             logger.info("Giving silence warning prompt to user")
                             await self.session.say(
-                                "Hello? I'm still here. Please respond in the next few seconds or I’ll have to end the call."
+                                "Hello? I'm still here. Please respond in the next few seconds or I will have to end the call."
                                 )
                             await asyncio.sleep(5)
                 else:

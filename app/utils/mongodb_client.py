@@ -96,3 +96,22 @@ class MongoDBClient:
             self.client = None
             self.db = None
             logger.info("MongoDB connection closed")
+
+    def get_knowledgebase_by_id(self, kb_id: str) -> Optional[Dict[str, Any]]:
+        self._ensure_connection()
+        try:
+            key = self._normalize_id(kb_id)
+            return self.db["knowledgebases"].find_one({"_id": key})
+        except Exception as e:
+            logger.error(f"Error retrieving knowledgebase {kb_id}: {e}")
+            return None
+
+    def list_knowledgebases(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        self._ensure_connection()
+        try:
+            query = {"owner": self._normalize_id(owner_id)} if owner_id else {}
+            return list(self.db["knowledgebases"].find(query))
+        except Exception as e:
+            logger.error("Error listing knowledgebases")
+            return []
+

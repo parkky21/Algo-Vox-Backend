@@ -27,14 +27,7 @@ async def entrypoint(ctx: JobContext):
         mongo_client = MongoDBClient()
         flow = mongo_client.get_flow_by_id(agent_id)
 
-        # api_key = flow.get("global_settings", {}).get("tts", {}).get("api_key")
-        # if isinstance(api_key, dict):
-        #     private_key = api_key.get("private_key")
-        #     if private_key and "\\n" in private_key:
-        #         api_key["private_key"] = private_key.replace("\\n", "\n")
-
-        agent_config = parse_agent_config(flow)
-        
+        agent_config = parse_agent_config(flow)      
 
         llm = build_llm_instance(
             agent_config.global_settings.llm.provider,
@@ -72,7 +65,6 @@ async def entrypoint(ctx: JobContext):
             return
         agent = await create_agent(entry_node, agent_config=agent_config, agent_id=agent_id)
 
-        # Start the session before dialing (if telephony)
         session_started = asyncio.create_task(
             session.start(agent=agent, 
                           room=ctx.room

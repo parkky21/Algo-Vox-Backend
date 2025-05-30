@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Body, Path, status,UploadFile, File
+from fastapi import APIRouter, HTTPException, Body, Path, status,UploadFile, File,Query
 from app.core.models import VectorStoreConfig
 import uuid
 import logging
@@ -20,6 +20,9 @@ from app.utils.vector_store_utils import (
     save_store_metadata,
     VECTOR_BASE_DIR
 )
+from app.utils.mongodb_client import MongoDBClient
+from io import BytesIO
+import requests
 
 router = APIRouter()
 
@@ -187,3 +190,105 @@ async def delete_vector_store(store_id: str = Path(..., description="Vector stor
     except Exception as e:
         logger.exception(f"Error deleting vector store {store_id}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/{store_id}/load_from_knowledgebase", status_code=status.HTTP_201_CREATED)
+async def load_documents_from_mongo(
+    store_id: str = Path(..., description="Vector store ID"),
+    knowledgebase_id: str = Query(..., description="Knowledgebase MongoDB document ID")
+):
+    if store_id not in vector_stores:
+        raise HTTPException(status_code=404, detail="Vector store not found")
+
+    try:
+        # Fetch vector store info
+        vs_info = vector_stores[store_id]
+        config = vs_info.get("config", {})
+        chunk_size = config.get("chunk_size", 512)
+        chunk_overlap = config.get("chunk_overlap", 100)
+        embed_model = vs_info["embed_model"]
+        store_path = VECTOR_BASE_DIR / store_id
+
+        # Load documents from MongoDB
+        mongo_client = MongoDBClient()
+        kb = mongo_client.get_knowledgebase_by_id(knowledgebase_id)
+        if not kb:
+            raise HTTPException(status_code=404, detail="Knowledgebase not found")
+
+        documents = kb.get("documents", [])
+        if not documents:
+            raise HTTPException(status_code=404, detail="No documents in knowledgebase")
+
+        # Load or initialize index
+        index = vs_info.get("index")
+        if not index:
+            try:
+                storage_context = StorageContext.from_defaults(persist_dir=str(store_path))
+                index = load_index_from_storage(storage_context, embed_model=embed_model)
+            except Exception as e:
+                logger.warning(f"Could not load index from disk: {e}, creating a new one.")
+                index = VectorStoreIndex(nodes=[], embed_model=embed_model)
+
+        added_docs = []
+
+        for doc in documents:
+            file_url = doc.get("filepath")
+            filename = doc.get("filename")
+
+            if not file_url or not filename:
+                logger.warning(f"Skipping document with missing data: {doc}")
+                continue
+
+            # Download file from Cloudinary
+            response = requests.get(file_url)
+            if response.status_code != 200:
+                logger.warning(f"Failed to download: {file_url}")
+                continue
+
+            file_bytes = BytesIO(response.content)
+
+            # Save to temp file
+            suffix = FsPath(filename).suffix or ".pdf"
+            import tempfile
+            # Create cross-platform temp file path
+            temp_dir = tempfile.gettempdir()
+            temp_path = FsPath(temp_dir) / f"{uuid.uuid4()}{suffix}"
+            with open(temp_path, "wb") as f:
+                f.write(file_bytes.read())
+
+            # Load and parse
+            reader = SimpleDirectoryReader(input_files=[str(temp_path)])
+            loaded_docs = reader.load_data()
+            splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+            nodes = splitter.get_nodes_from_documents(loaded_docs)
+
+            index.insert_nodes(nodes)
+
+            doc_id = str(uuid.uuid4())
+            added_docs.append({
+                "id": doc_id,
+                "name": filename,
+                "source": "cloudinary",
+                "uploaded_at": datetime.utcnow().isoformat()
+            })
+
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                logger.warning(f"Failed to delete temp file: {temp_path}")
+
+        index.storage_context.persist(persist_dir=str(store_path))
+        vs_info["index"] = index
+        vs_info["documents"].extend(added_docs)
+        save_store_metadata(store_id, vs_info)
+
+        return {
+            "status": "success",
+            "store_id": store_id,
+            "message": f"Added {len(added_docs)} documents from knowledgebase",
+            "document_names": [d["name"] for d in added_docs]
+        }
+
+    except Exception as e:
+        logger.exception("Failed to load documents from MongoDB")
+        raise HTTPException(status_code=500, detail=str(e))
