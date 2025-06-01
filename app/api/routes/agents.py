@@ -60,6 +60,8 @@ async def start_agent_from_mongo(
 
         vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
         if vector_store_id and vector_store_id not in vector_stores:
+            msg = f"Vector store ID '{vector_store_id}' is not loaded in memory."
+            logger.error(msg)
             raise HTTPException(
                 status_code=400,
                 detail=f"Vector store ID '{vector_store_id}' is not loaded in memory. "
@@ -93,13 +95,17 @@ async def start_agent_from_mongo(
         }
 
     except ValidationError as ve:
+        logger.error(f"Validation Error in agent config for '{agent_id}': {ve}")
+
         raise HTTPException(
             status_code=400,
             detail=f"Invalid agent configuration: {ve.errors()}"
         )
-    except HTTPException:
+    except HTTPException as http_ex:
+        logger.error(f"HTTP Exception for agent_id '{agent_id}': {http_ex.detail}")
         raise
     except Exception as e:
+        logger.exception(f"Unexpected error while starting agent '{agent_id}': {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
