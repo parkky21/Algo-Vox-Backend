@@ -97,23 +97,38 @@ class GenericAgent(Agent):
                                 await self.session.say(
                                     "It seems we've lost connection or you're unavailable. Ending the call now. Take care.",
                                     allow_interruptions=False
-                                    )
+                                )
                                 await hangup()
                             except Exception as e:
                                 logger.error(f"Failed during final hangup: {e}")
                             break
+
                         elif elapsed > timeout_seconds / 2 and not warning_given:
                             warning_given = True
                             logger.info("Giving silence warning prompt to user")
                             await self.session.say(
                                 "Hello? I'm still here. Please respond in the next few seconds or I will have to end the call."
-                                )
-                            await asyncio.sleep(5)
+                            )
+                            
+                            # Check every 0.5s for up to 5 seconds
+                            for _ in range(10):
+                                await asyncio.sleep(0.5)
+
+                                current_state = self.session._agent_state
+                                user_state = self.session._user_state
+
+                                if current_state != "listening" or user_state == "speaking":
+                                    logger.info("User responded or LLM resumed after warning. Resetting silence timer.")
+                                    last_listening_start = None
+                                    warning_given = False
+                                    break
+
                 else:
                     last_listening_start = None
                     warning_given = False
 
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
+
         except asyncio.CancelledError:
             logger.info("Silence detection task was cancelled")
 

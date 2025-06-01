@@ -23,7 +23,6 @@ from pydantic import ValidationError
 @router.post("/start-call/{agent_id}")
 async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTasks):
     flow = mongo_client.get_flow_by_id(agent_id)
-
     if not flow:
         raise HTTPException(
             status_code=404,
