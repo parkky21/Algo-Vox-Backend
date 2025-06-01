@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks,Query
 from app.utils.mongodb_client import MongoDBClient
 import uuid
 import logging
@@ -21,7 +21,11 @@ agent_sessions = {}
 from pydantic import ValidationError
 
 @router.post("/start-call/{agent_id}")
-async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTasks):
+async def start_agent_from_mongo(
+    agent_id: str,
+    background_tasks: BackgroundTasks,
+    phone_number: str = Query(..., description="Phone number to call (e.g., +918108709605)")
+):
     flow = mongo_client.get_flow_by_id(agent_id)
     if not flow:
         raise HTTPException(
@@ -46,10 +50,9 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
 
         room_name = f"room-{uuid.uuid4().hex[:6]}"
         agent_name = f"agent-{uuid.uuid4().hex[:6]}"
-        phn_num= "+918108709605"  # Example phone number, replace as needed
         
         task = asyncio.create_task(agent_run(agent_name=agent_name, agent_id=agent_id))
-        dispatch = await create_agent_dispatch(agent_id=agent_id,phone_number=phn_num, agent_name=agent_name, room_name=room_name)
+        dispatch = await create_agent_dispatch(agent_id=agent_id, phone_number=phone_number, agent_name=agent_name, room_name=room_name)
 
         agent_sessions[agent_id] = {
             "active": True,
@@ -64,7 +67,7 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
             "agent_id": agent_id,
             "agent_name": agent_name,
             "room_name": room_name,
-            "dispatch_id": dispatch.id ,
+            "dispatch_id": dispatch.id,
             "message": "Agent successfully launched from MongoDB configuration"
         }
 
@@ -74,7 +77,7 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
             detail=f"Invalid agent configuration: {ve.errors()}"
         )
     except HTTPException:
-        raise  # re-raise any manually raised HTTPExceptions (e.g., for vector_store_id)
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -82,7 +85,7 @@ async def start_agent_from_mongo(agent_id: str, background_tasks: BackgroundTask
             status_code=500,
             detail=f"Unexpected error while starting agent '{agent_id}': {str(e)}"
         )
-    
+
 @router.post("/start-batch-call/{agent_id}")
 async def start_batch_agent_calls(
     agent_id: str,
