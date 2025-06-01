@@ -107,7 +107,7 @@ async def entrypoint(ctx: JobContext):
                     sip_call_to=participant_identity,
                     participant_identity=participant_identity,
                     wait_until_answered=True,
-                    krisp_enabled=True
+                    # krisp_enabled=True
                 )
             )
             await session_started
