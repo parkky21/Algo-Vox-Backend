@@ -10,10 +10,11 @@ from app.utils.call_control_tools import end_call ,detected_answering_machine, h
 from app.core.ws_manager import ws_manager
 from app.utils.query_tool import build_query_tool
 import copy
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
-now = datetime.now(UTC).strftime("%A, %B %d, %Y at %I:%M %p UTC")
+now = datetime.now(timezone.utc).strftime("%A, %B %d, %Y at %I:%M %p UTC")
 current_time = f"The current date and time is {now}."
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("DynamicAgent")
