@@ -5,10 +5,9 @@ import logging
 from dotenv import load_dotenv
 from app.core.config import Settings
 
-# Load env vars
 load_dotenv()
-
 logger = logging.getLogger(__name__)
+
 
 class MongoDBClient:
     _instance = None
@@ -21,7 +20,6 @@ class MongoDBClient:
         return cls._instance
 
     def connect(self):
-        """Establish MongoDB connection"""
         try:
             mongo_uri = Settings.MONGODB_URI
             db_name = Settings.MONGODB_NAME
@@ -37,20 +35,22 @@ class MongoDBClient:
         if not self.client:
             self.connect()
 
-    def _normalize_id(self, id_str: str) -> Union[str, ObjectId]:
-        """Attempt to parse an ID string as ObjectId; fallback to raw string"""
+    def _normalize_id(self, id_str: Union[str, ObjectId]) -> Union[str, ObjectId]:
+        if isinstance(id_str, ObjectId):
+            return id_str
         try:
             return ObjectId(id_str)
         except Exception:
-            return id_str  # Fallback if not a valid ObjectId
+            return id_str
 
+    # ---------------- Flows ---------------- #
     def get_flow_by_id(self, flow_id: str) -> Optional[Dict[str, Any]]:
         self._ensure_connection()
         try:
             key = self._normalize_id(flow_id)
             return self.db["flows"].find_one({"_id": key})
         except Exception as e:
-            logger.error(f"Error retrieving flow {_id}: {e}")
+            logger.error(f"Error retrieving flow {flow_id}: {e}")
             return None
 
     def get_all_flows(self) -> List[Dict[str, Any]]:
@@ -90,13 +90,7 @@ class MongoDBClient:
             logger.error(f"Error deleting flow {flow_id}: {e}")
             return False
 
-    def close(self):
-        if self.client:
-            self.client.close()
-            self.client = None
-            self.db = None
-            logger.info("MongoDB connection closed")
-
+    # ---------------- Knowledgebases ---------------- #
     def get_knowledgebase_by_id(self, kb_id: str) -> Optional[Dict[str, Any]]:
         self._ensure_connection()
         try:
@@ -115,3 +109,64 @@ class MongoDBClient:
             logger.error("Error listing knowledgebases")
             return []
 
+    # ---------------- Vector Stores ---------------- #
+    def save_vector_store(self, store_data: Dict[str, Any]) -> bool:
+        """Insert or update a vector store using `_id` as ObjectId"""
+        self._ensure_connection()
+        try:
+            store_id = store_data.get("id")
+            object_id = self._normalize_id(store_id)
+            store_data["_id"] = object_id
+            result = self.db["vector_stores"].update_one(
+                {"_id": object_id},
+                {"$set": store_data},
+                upsert=True
+            )
+            return result.acknowledged
+        except Exception as e:
+            logger.error(f"Error saving vector store {store_data.get('id')}: {e}")
+            return False
+
+    def get_vector_store(self, store_id: Union[str, ObjectId]) -> Optional[Dict[str, Any]]:
+        self._ensure_connection()
+        try:
+            key = self._normalize_id(store_id)
+            return self.db["vector_stores"].find_one({"_id": key})
+        except Exception as e:
+            logger.error(f"Error retrieving vector store {store_id}: {e}")
+            return None
+
+    def get_vector_store_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        self._ensure_connection()
+        try:
+            return self.db["vector_stores"].find_one({"name": name})
+        except Exception as e:
+            logger.error(f"Error finding vector store by name: {name}")
+            return None
+
+    def delete_vector_store(self, store_id: Union[str, ObjectId]) -> bool:
+        self._ensure_connection()
+        try:
+            key = self._normalize_id(store_id)
+            result = self.db["vector_stores"].delete_one({"_id": key})
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"Error deleting vector store {store_id}: {e}")
+            return False
+
+    def list_vector_stores(self) -> List[Dict[str, Any]]:
+        self._ensure_connection()
+        try:
+            cursor = self.db["vector_stores"].find({}, {"_id": 1, "name": 1, "documents": 1})
+            return list(cursor)
+        except Exception as e:
+            logger.error("Error listing vector stores")
+            return []
+
+    # ---------------- Teardown ---------------- #
+    def close(self):
+        if self.client:
+            self.client.close()
+            self.client = None
+            self.db = None
+            logger.info("MongoDB connection closed")

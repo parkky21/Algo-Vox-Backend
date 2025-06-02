@@ -3,17 +3,20 @@ import logging
 from pathlib import Path as FsPath
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, status
+from bson import ObjectId  # ⬅️ Add this
 from llama_index.core import StorageContext, load_index_from_storage
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.gemini import GeminiEmbedding
+
+from app.utils.mongodb_client import MongoDBClient
 
 logger = logging.getLogger(__name__)
 
 VECTOR_BASE_DIR = FsPath("vector_stores")
 VECTOR_BASE_DIR.mkdir(exist_ok=True)
 
-# In-memory vector store cache
-vector_stores: Dict[str, Dict[str, Any]] = {}
+mongo_client = MongoDBClient()
+
 
 def get_embed_model(provider: str, api_key: str, model_name: Optional[str] = None):
     provider = provider.lower()
@@ -23,56 +26,47 @@ def get_embed_model(provider: str, api_key: str, model_name: Optional[str] = Non
         return GeminiEmbedding(api_key=api_key, model=model_name or "models/embedding-001")
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported provider: {provider}")
 
-def save_store_metadata(store_id: str, metadata: dict):
-    """Save vector store metadata to disk"""
-    store_path = VECTOR_BASE_DIR / store_id
-    metadata_path = store_path / "metadata.json"
 
-    save_data = {k: v for k, v in metadata.items() if k not in ["index", "embed_model"]}
+def get_vector_store_dir(store_id: str) -> FsPath:
+    return VECTOR_BASE_DIR / store_id
 
-    with open(metadata_path, "w") as f:
-        json.dump(save_data, f)
 
-def load_vector_stores():
-    """Load all vector stores from disk during startup"""
-    for store_dir in VECTOR_BASE_DIR.iterdir():
-        if not store_dir.is_dir():
-            continue
+def parse_object_id(id_str: str) -> ObjectId:
+    try:
+        return ObjectId(id_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid vector store ID format")
 
-        store_id = store_dir.name
-        metadata_path = store_dir / "metadata.json"
 
-        if not metadata_path.exists():
-            logger.warning(f"No metadata found for store {store_id}, skipping")
-            continue
+def load_vector_store_from_mongo(store_id: str) -> Dict[str, Any]:
+    """
+    Load vector store metadata from MongoDB and hydrate index/embed_model into memory.
+    """
+    key = parse_object_id(store_id)
+    metadata = mongo_client.get_vector_store(key)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Vector store '{store_id}' not found in database")
 
-        try:
-            with open(metadata_path, "r") as f:
-                metadata = json.load(f)
+    config = metadata.get("config", {})
+    store_path = get_vector_store_dir(store_id)
 
-            config = metadata.get("config", {})
-            embed_model = get_embed_model(
-                config.get("provider", "openai"),
-                config.get("api_key", ""),
-                config.get("model_name")
-            )
+    try:
+        embed_model = get_embed_model(
+            config.get("provider", "openai"),
+            config.get("api_key", ""),
+            config.get("model_name")
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize embed model for store {store_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to initialize embedding model")
 
-            try:
-                storage_context = StorageContext.from_defaults(persist_dir=store_dir)
-                index = load_index_from_storage(storage_context, embed_model=embed_model)
+    try:
+        storage_context = StorageContext.from_defaults(persist_dir=store_path)
+        index = load_index_from_storage(storage_context, embed_model=embed_model)
+    except Exception as e:
+        logger.error(f"Error loading index from disk for store {store_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load vector index")
 
-                vector_stores[store_id] = {
-                    "id": store_id,
-                    "name": metadata.get("name", "Unnamed Store"),
-                    "config": config,
-                    "index": index,
-                    "documents": metadata.get("documents", []),
-                    "embed_model": embed_model
-                }
-                logger.info(f"Loaded vector store {store_id}")
-            except Exception as e:
-                logger.error(f"Error loading index for store {store_id}: {e}")
-        except Exception as e:
-            logger.error(f"Error loading metadata for store {store_id}: {e}")
-
-load_vector_stores()
+    metadata["index"] = index
+    metadata["embed_model"] = embed_model
+    return metadata

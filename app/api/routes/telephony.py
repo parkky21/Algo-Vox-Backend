@@ -4,7 +4,7 @@ import uuid
 import logging
 import asyncio
 from datetime import datetime
-from app.utils.vector_store_utils import vector_stores
+from app.utils.vector_store_utils import load_vector_store_from_mongo
 from app.utils.node_parser import parse_agent_config
 from app.utils.validators import validate_custom_function
 from app.utils.dispatch_service import create_agent_dispatch
@@ -41,12 +41,15 @@ async def start_agent_from_mongo(
                 validate_custom_function(node.custom_function.code)
 
         vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
-        if vector_store_id and vector_store_id not in vector_stores:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Vector store ID '{vector_store_id}' is not loaded in memory. "
-                       f"Please ensure it's created and loaded before running the agent."
-            )
+        if vector_store_id:
+            try:
+                load_vector_store_from_mongo(vector_store_id)
+            except HTTPException as e:
+                logger.error(f"Vector store validation failed: {e.detail}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Vector store ID '{vector_store_id}' is not available or invalid. "
+                )
 
         room_name = f"room-{uuid.uuid4().hex[:6]}"
         agent_name = f"agent-{uuid.uuid4().hex[:6]}"
