@@ -52,7 +52,15 @@ async def entrypoint(ctx: JobContext):
             stt=stt,
             llm=llm,
             tts=tts,
-            vad=silero.VAD.load(),
+            vad=silero.VAD.load(
+                min_speech_duration=0.1,           # Detect speech quickly
+                min_silence_duration=0.2,          # End speech chunk fast
+                prefix_padding_duration=0.05,      # Small lead buffer
+                max_buffered_speech=5.0,           # Enough to handle long sentences
+                activation_threshold=0.5,          # Lower = more sensitive, tune if noisy
+                sample_rate=16000,                 # Higher quality, less noisy triggers
+                force_cpu=True  
+            ),
             # turn_detection=EnglishModel(),
 
         )

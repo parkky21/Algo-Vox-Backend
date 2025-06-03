@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 now = datetime.now(timezone.utc).strftime("%A, %B %d, %Y at %I:%M %p UTC")
 current_time = f"The current date and time is {now}."
 
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("DynamicAgent")
 
