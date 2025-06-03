@@ -111,12 +111,15 @@ async def start_batch_agent_calls(
                 validate_custom_function(node.custom_function.code)
 
         vector_store_id = getattr(agent_config.global_settings, "vector_store_id", None)
-        if vector_store_id and vector_store_id not in vector_stores:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Vector store ID '{vector_store_id}' is not loaded in memory. "
-                       f"Please ensure it's created and loaded before running the agent."
-            )
+        if vector_store_id:
+            try:
+                load_vector_store_from_mongo(vector_store_id)
+            except HTTPException as e:
+                logger.error(f"Vector store validation failed: {e.detail}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Vector store ID '{vector_store_id}' is not available or invalid. "
+                )
 
         results = []
 
