@@ -116,20 +116,19 @@ async def delete_vector_store(store_id: str = Path(..., description="Vector stor
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{store_id}/load_from_knowledgebase", status_code=status.HTTP_201_CREATED)
-async def load_documents_from_mongo(
-    store_id: str = Path(..., description="Vector store ID"),
-    knowledgebase_id: str = Query(..., description="Knowledgebase MongoDB document ID")
+@router.post("/{store_id}/vectorize", status_code=status.HTTP_201_CREATED)
+async def initialize_vector_store_from_knowledgebase(
+    store_id: str = Path(..., description="Vector store ID to initialize")
 ):
     try:
         vs_info = load_vector_store_from_mongo(store_id)
-
         config = vs_info["config"]
         chunk_size = config.get("chunk_size", 512)
         chunk_overlap = config.get("chunk_overlap", 100)
-        embed_model = vs_info["embed_model"]
-        index = vs_info["index"]
-        store_path = VECTOR_BASE_DIR / store_id
+        knowledgebase_id = config.get("knowledgeBase_id")
+
+        if not knowledgebase_id:
+            raise HTTPException(status_code=400, detail="No knowledgeBase_id found in vector store config.")
 
         kb = mongo_client.get_knowledgebase_by_id(knowledgebase_id)
         if not kb:
@@ -139,6 +138,10 @@ async def load_documents_from_mongo(
         if not documents:
             raise HTTPException(status_code=404, detail="No documents in knowledgebase")
 
+        embed_model = vs_info["embed_model"]
+        store_path = VECTOR_BASE_DIR / store_id
+        index = vs_info.get("index") or VectorStoreIndex(nodes=[], embed_model=embed_model)
+
         added_docs = []
 
         for doc in documents:
@@ -146,12 +149,10 @@ async def load_documents_from_mongo(
             filename = doc.get("filename")
 
             if not file_url or not filename:
-                logger.warning(f"Skipping document with missing data: {doc}")
                 continue
 
             response = requests.get(file_url)
             if response.status_code != 200:
-                logger.warning(f"Failed to download: {file_url}")
                 continue
 
             file_bytes = BytesIO(response.content)
@@ -168,37 +169,31 @@ async def load_documents_from_mongo(
                 nodes = splitter.get_nodes_from_documents(loaded_docs)
                 index.insert_nodes(nodes)
 
-                doc_id = str(uuid.uuid4())
-                added_docs.append({
-                    "id": doc_id,
-                    "name": filename,
-                    "source": "cloudinary",
-                    "uploaded_at": datetime.utcnow().isoformat()
-                })
-
+                added_docs.append(filename)
             finally:
                 try:
                     temp_path.unlink(missing_ok=True)
                 except Exception:
-                    logger.warning(f"Failed to delete temp file: {temp_path}")
+                    pass
 
         index.storage_context.persist(persist_dir=str(store_path))
 
-        vs_info["documents"].extend(added_docs)
-        vs_info["updated_at"] = datetime.utcnow().isoformat()
-        update_payload = {k: v for k, v in vs_info.items() if k not in ("index", "embed_model")}
-        update_payload["id"] = str(vs_info["_id"])
-        mongo_client.save_vector_store(update_payload)
+        # Update just timestamp in MongoDB
+        mongo_client.save_vector_store({
+            "_id": vs_info["_id"],
+            "updatedAt": datetime.utcnow().isoformat()
+        })
 
         return {
             "status": "success",
             "store_id": store_id,
-            "message": f"Added {len(added_docs)} documents from knowledgebase",
-            "document_names": [d["name"] for d in added_docs]
+            "message": f"Initialized vector store with {len(added_docs)} documents from knowledgebase",
+            "document_names": added_docs
         }
 
     except HTTPException as http_exc:
-        raise http_exc  # Let FastAPI handle known exceptions cleanly
+        raise http_exc
     except Exception as e:
-        logger.exception("Failed to load documents from MongoDB")
-        raise HTTPException(status_code=500, detail="Internal server error while loading documents")
+        import logging
+        logging.exception("Vector store initialization failed")
+        raise HTTPException(status_code=500, detail="Internal error while initializing vector store")

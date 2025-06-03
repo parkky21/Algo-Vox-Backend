@@ -13,7 +13,6 @@ class VectorStoreConfig(BaseModel):
     provider: str
     model_name: Optional[str] = None
     api_key: Optional[str] = None
-    store_id: Optional[str] = None
 
 class NodeRoute(BaseModel):
     tool_name: str

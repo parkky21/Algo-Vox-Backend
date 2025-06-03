@@ -114,10 +114,16 @@ class MongoDBClient:
         """Insert or update a vector store using `_id` as ObjectId"""
         self._ensure_connection()
         try:
-            store_id = store_data.get("id")
+            store_id = store_data.get("id") or store_data.get("_id")
+            if not store_id:
+                raise ValueError("Missing vector store ID for saving.")
             object_id = self._normalize_id(store_id)
+
+            # Clean up ID fields
             store_data["_id"] = object_id
-            result = self.db["vector_stores"].update_one(
+            store_data.pop("id", None)
+
+            result = self.db["vectorstores"].update_one(
                 {"_id": object_id},
                 {"$set": store_data},
                 upsert=True
@@ -131,7 +137,7 @@ class MongoDBClient:
         self._ensure_connection()
         try:
             key = self._normalize_id(store_id)
-            return self.db["vector_stores"].find_one({"_id": key})
+            return self.db["vectorstores"].find_one({"_id": key})
         except Exception as e:
             logger.error(f"Error retrieving vector store {store_id}: {e}")
             return None
@@ -139,7 +145,7 @@ class MongoDBClient:
     def get_vector_store_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         self._ensure_connection()
         try:
-            return self.db["vector_stores"].find_one({"name": name})
+            return self.db["vectorstores"].find_one({"name": name})
         except Exception as e:
             logger.error(f"Error finding vector store by name: {name}")
             return None
@@ -148,7 +154,7 @@ class MongoDBClient:
         self._ensure_connection()
         try:
             key = self._normalize_id(store_id)
-            result = self.db["vector_stores"].delete_one({"_id": key})
+            result = self.db["vectorstores"].delete_one({"_id": key})
             return result.deleted_count > 0
         except Exception as e:
             logger.error(f"Error deleting vector store {store_id}: {e}")
@@ -157,7 +163,10 @@ class MongoDBClient:
     def list_vector_stores(self) -> List[Dict[str, Any]]:
         self._ensure_connection()
         try:
-            cursor = self.db["vector_stores"].find({}, {"_id": 1, "name": 1, "documents": 1})
+            # Include knowledgeBase_id in projection for UI/backend logic
+            cursor = self.db["vectorstores"].find(
+                {}, {"_id": 1, "name": 1, "documents": 1, "knowledgeBase_id": 1}
+            )
             return list(cursor)
         except Exception as e:
             logger.error("Error listing vector stores")
