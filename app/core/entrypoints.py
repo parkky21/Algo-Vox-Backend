@@ -10,6 +10,7 @@ from app.utils.mongodb_client import MongoDBClient
 from app.utils.transcript_fnc import write_transcript_file
 from app.core.dynamic_agent import create_agent
 from app.core.config import settings
+from app.core.single_agent import SingleAgent
 # from livekit.plugins.turn_detector.english import EnglishModel
 # from livekit.plugins import noise_cancellation
 # from livekit.agents import RoomInputOptions
@@ -24,11 +25,12 @@ async def entrypoint(ctx: JobContext):
 
         metadata = json.loads(ctx.job.metadata)
         agent_id = metadata["agent_id"]
+
         mongo_client = MongoDBClient()
         flow = mongo_client.get_flow_by_id(agent_id)
+        agent_config = parse_agent_config(flow)
 
-        agent_config = parse_agent_config(flow)      
-
+        # Build model instances
         llm = build_llm_instance(
             agent_config.global_settings.llm.provider,
             agent_config.global_settings.llm.model,
@@ -48,42 +50,51 @@ async def entrypoint(ctx: JobContext):
             credentials_info=agent_config.global_settings.tts.api_key
         )
 
+        # Create AgentSession
         session = AgentSession(
             stt=stt,
             llm=llm,
             tts=tts,
             vad=silero.VAD.load(
-                min_speech_duration=0.1,           # Detect speech quickly
-                min_silence_duration=0.2,          # End speech chunk fast
-                prefix_padding_duration=0.05,      # Small lead buffer
-                max_buffered_speech=5.0,           # Enough to handle long sentences
-                activation_threshold=0.5,          # Lower = more sensitive, tune if noisy
-                sample_rate=16000,                 # Higher quality, less noisy triggers
-                force_cpu=True  
-            ),
-            # turn_detection=EnglishModel(),
-
+                min_speech_duration=0.1,
+                min_silence_duration=0.2,
+                prefix_padding_duration=0.05,
+                max_buffered_speech=5.0,
+                activation_threshold=0.5,
+                sample_rate=16000,
+                force_cpu=True
+            )
         )
+
+        print(agent_config.flow_type)
 
         ctx.add_shutdown_callback(lambda: write_transcript_file(session, ctx.room.name))
 
-        entry_node = agent_config.entry_node
-        if not entry_node:
-            logger.error(f"No entry node defined in agent config for ID: {agent_id}")
-            return
-        agent = await create_agent(entry_node, agent_config=agent_config, agent_id=agent_id)
+        # Choose agent based on flow_type
+        if getattr(agent_config, "flow_type", "") == "single-prompt":
+            logger.info("Launching Single Prompt Agent")
+            vector_store_id = agent_config.global_settings.vector_store_id
+            prompt = agent_config.global_settings.global_prompt or "How can I assist you?"
+            timeout = agent_config.global_settings.timeout_seconds or 15
 
-        session_started = asyncio.create_task(
-            session.start(agent=agent, 
-                          room=ctx.room
-                          # room_input_options=RoomInputOptions(
-                            #     noise_cancellation=noise_cancellation.BVCTelephony(),
-                            # )
-                )
-        )
+            agent = SingleAgent(
+                prompt=prompt,
+                vector_store_id=vector_store_id,
+                timeout_seconds=timeout
+            )
+        else:
+            logger.info("Launching Multi-Flow Agent")
+            entry_node = agent_config.entry_node
+            if not entry_node:
+                logger.error(f"No entry node defined in agent config for ID: {agent_id}")
+                return
+            agent = await create_agent(entry_node, agent_config=agent_config, agent_id=agent_id)
 
+        # Start agent session
+        session_started = asyncio.create_task(session.start(agent=agent, room=ctx.room))
+
+        # Optional background audio
         bg_audio_cfg = agent_config.global_settings.background_audio
-
         if bg_audio_cfg and bg_audio_cfg.enabled:
             try:
                 background_audio = BackgroundAudioPlayer(
@@ -96,18 +107,15 @@ async def entrypoint(ctx: JobContext):
                         AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=bg_audio_cfg.thinking_volume),
                     ]
                 )
-
                 await background_audio.start(room=ctx.room, agent_session=session)
                 logger.info("Background audio started.")
             except Exception as e:
                 logger.error(f"Error applying background audio config: {e}")
 
-        # Telephony integration (conditional block)
-        if "phone_number" in metadata:     
+        # SIP Integration (if applicable)
+        if "phone_number" in metadata:
             participant_identity = metadata["phone_number"]
             logger.info(f"Dialing SIP participant: {participant_identity}")
-            logger.info(f"Using SIP trunk ID: {settings.SIP_OUTBOUND_TRUNK_ID}")
-            logger.info(f"Room name: {ctx.room.name}")
             await ctx.api.sip.create_sip_participant(
                 api.CreateSIPParticipantRequest(
                     room_name=ctx.room.name,
@@ -115,15 +123,12 @@ async def entrypoint(ctx: JobContext):
                     sip_call_to=participant_identity,
                     participant_identity=participant_identity,
                     wait_until_answered=True,
-                    # krisp_enabled=True
                 )
             )
             await session_started
             participant = await ctx.wait_for_participant(identity=participant_identity)
             logger.info(f"Participant joined: {participant.identity}")
-            # optionally attach to agent if needed: agent.set_participant(participant)
         else:
-            # standard agent session, no SIP call
             await session_started
 
     except api.TwirpError as e:

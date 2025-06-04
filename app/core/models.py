@@ -97,11 +97,11 @@ class AgentConfig(BaseModel):
     entry_node: Optional[str] = None
     global_settings: Optional[GlobalSettings] = None
     nodes: Optional[List[NodeConfig]] = None
+    flow_type:Optional[str] = None
 
 class AgentResponse(BaseModel):
     agent_id: str
     message: str
-
 
 class StartAgentRequest(BaseModel):
     agent_id: str

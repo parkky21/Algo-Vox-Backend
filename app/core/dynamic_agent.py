@@ -2,7 +2,6 @@ import logging
 import sys
 from typing import Optional
 import time
-import asyncio
 from livekit.agents import RunContext
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent
@@ -11,6 +10,7 @@ from app.core.ws_manager import ws_manager
 from app.utils.query_tool import build_query_tool
 import copy
 from datetime import datetime, timezone
+from app.utils.silence_detection import SilenceDetector
 
 now = datetime.now(timezone.utc).strftime("%A, %B %d, %Y at %I:%M %p UTC")
 current_time = f"The current date and time is {now}."
@@ -53,7 +53,7 @@ class GenericAgent(Agent):
 
         self._agent_config = agent_config
         self._node_config = node_config
-        self._silence_task = None
+        self._silence_detector = None  # Changed from _silence_task to _silence_detector
 
         super().__init__(
             instructions=f"{global_prompt}\n{prompt}\n{current_time}",
@@ -61,80 +61,45 @@ class GenericAgent(Agent):
             chat_ctx=chat_ctx
         )
 
+    def _get_timeout_config(self) -> tuple[Optional[int], int]:
+        """Get timeout configuration from agent config."""
+        initial_timeout = None
+        warning_timeout = 5  # Default 5 seconds for warning
+        
+        if (self._agent_config and 
+            hasattr(self._agent_config, 'global_settings') and 
+            self._agent_config.global_settings):
+            
+            settings = self._agent_config.global_settings
+            # Try new config fields first
+            initial_timeout = getattr(settings, 'initial_timeout_seconds', None)
+            warning_timeout = getattr(settings, 'warning_timeout_seconds', 5)
+            
+            # For backward compatibility with old config
+            if initial_timeout is None:
+                old_timeout = getattr(settings, 'timeout_seconds', None)
+                if old_timeout:
+                    # Split old timeout: use most of it for initial, keep 5s for warning
+                    initial_timeout = max(old_timeout - warning_timeout, 5)  # Minimum 5s initial
+        
+        return initial_timeout, warning_timeout
+
     async def on_enter(self):
+        """Start agent and silence detection."""
+        logger.info(self.chat_ctx)
         await self.session.generate_reply()
-        silnc = self._agent_config.global_settings.timeout_seconds
+        
+        # Get timeout configuration
+        initial_timeout, warning_timeout = self._get_timeout_config()
+        if initial_timeout and initial_timeout > 0:
+            self._silence_detector = SilenceDetector(self.session, initial_timeout, warning_timeout)
+            await self._silence_detector.start()
 
-        if isinstance(silnc, (int, float)) and silnc > 0:
-            logger.info(f"Starting silence detection with timeout: {silnc} seconds")
-
-            if self._silence_task and not self._silence_task.done():
-                self._silence_task.cancel()
-                logger.info("Previous silence detection task cancelled")
-
-            self._silence_task = asyncio.create_task(self._detect_silence(timeout_seconds=silnc))
-
-    async def _detect_silence(self, timeout_seconds: int = 30):
-        last_listening_start = None
-        warning_given = False
-
-        try:
-            while True:
-                if getattr(self.session, "ended", False):
-                    logger.info("Session ended. Exiting silence detection loop.")
-                    break
-
-                current_state = self.session._agent_state
-
-                if current_state == "speaking":
-                    last_listening_start = None
-                    warning_given = False
-
-                elif current_state == "listening":
-                    if last_listening_start is None:
-                        last_listening_start = time.time()
-                    else:
-                        elapsed = time.time() - last_listening_start
-                        if elapsed > timeout_seconds:
-                            logger.info("Silence timeout reached. Ending call...")
-                            try:
-                                await self.session.say(
-                                    "It seems we've lost connection or you're unavailable. Ending the call now. Take care.",
-                                    allow_interruptions=False
-                                )
-                                await hangup()
-                            except Exception as e:
-                                logger.error(f"Failed during final hangup: {e}")
-                            break
-
-                        elif elapsed > timeout_seconds / 2 and not warning_given:
-                            warning_given = True
-                            logger.info("Giving silence warning prompt to user")
-                            await self.session.say(
-                                "Hello? I'm still here. Please respond in the next few seconds or I will have to end the call."
-                            )
-                            
-                            # Check every 0.5s for up to 5 seconds
-                            for _ in range(10):
-                                await asyncio.sleep(0.5)
-
-                                current_state = self.session._agent_state
-                                user_state = self.session._user_state
-
-                                if current_state != "listening" or user_state == "speaking":
-                                    logger.info("User responded or LLM resumed after warning. Resetting silence timer.")
-                                    last_listening_start = None
-                                    warning_given = False
-                                    break
-
-                else:
-                    last_listening_start = None
-                    warning_given = False
-
-                await asyncio.sleep(1)
-
-        except asyncio.CancelledError:
-            logger.info("Silence detection task was cancelled")
+    async def on_exit(self):
+        """Cleanup when agent exits."""
+        if self._silence_detector:
+            await self._silence_detector.stop()
+            self._silence_detector = None
 
 async def create_agent(node_id: str, chat_ctx=None, agent_config=None, agent_id=None) -> Agent:
     tools = []

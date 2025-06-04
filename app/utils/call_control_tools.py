@@ -6,7 +6,7 @@ import aiohttp
 import json
 from livekit import rtc
 
-logger = logging.getLogger("end-call")
+logger = logging.getLogger("call_control")
 
 async def hangup():
     """Helper function to hang up the call by deleting the room"""
